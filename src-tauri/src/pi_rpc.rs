@@ -215,15 +215,18 @@ impl PiRpcManager {
         };
 
         let pid = child.id();
-        let stdin = child.stdin.take().ok_or_else(|| {
-            "Failed to capture stdin pipe for Pi RPC child process".to_string()
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            "Failed to capture stdout pipe for Pi RPC child process".to_string()
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            "Failed to capture stderr pipe for Pi RPC child process".to_string()
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Failed to capture stdin pipe for Pi RPC child process".to_string())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Failed to capture stdout pipe for Pi RPC child process".to_string())?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| "Failed to capture stderr pipe for Pi RPC child process".to_string())?;
 
         let child_arc = Arc::new(Mutex::new(child));
 
