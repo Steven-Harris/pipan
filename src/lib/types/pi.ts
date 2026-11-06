@@ -277,13 +277,17 @@ export type FlowNodeStatus =
 /** Svelte Flow `type` keys registered in FlowCanvas. */
 export type FlowNodeType = 'pipan' | 'orchestrator' | 'worker' | 'action' | 'approval';
 
-export type ApprovalResolution = 'pending' | 'approved' | 'modified';
+export type ApprovalResolution = 'pending' | 'approved' | 'modified' | 'rejected';
 
 export interface FlowApprovalRequest {
   /** The blocked action, e.g. a shell command or file path. */
   action: string;
   reason?: string;
   resolution: ApprovalResolution;
+  /** Correlating request id from Rust (Phase 5). */
+  requestId?: string;
+  /** Modified replacement command if resolution was 'modified'. */
+  replacement?: string;
 }
 
 export interface FlowNodeMeta {

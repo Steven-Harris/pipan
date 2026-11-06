@@ -18,6 +18,8 @@
  */
 import type { Edge, MarkerType } from '@xyflow/svelte';
 import type {
+  AgentApprovalRequestPayload,
+  AgentApprovalResolvedPayload,
   AgentEventPayload,
   AgentSessionInfo,
   AgentToolCallData,
@@ -49,7 +51,8 @@ export type GraphChange = 'none' | 'minor' | 'structural';
 export const workerNodeId = (sessionId: string) => `worker-${sessionId}`;
 export const actionNodeId = (sessionId: string, callId: string) =>
   `action-${sessionId}-${callId}`;
-const approvalNodeId = (sessionId: string, key: string) => `approval-${sessionId}-${key}`;
+export const approvalNodeId = (sessionId: string, key: string) => `approval-${sessionId}-${key}`;
+export const approvalNodeIdByRequest = (requestId: string) => `approval-req-${requestId}`;
 
 export function summarizeToolArgs(args?: Record<string, unknown> | null, argsJson?: string): string {
   if (args && typeof args === 'object') {
@@ -349,8 +352,78 @@ export class TelemetryGraph {
   }
 
   // -------------------------------------------------------------------------
-  // Approval gates (rendered now; the Rust interceptor that creates them is Phase 5)
+  // Approval gates (Phase 5 Plan Mode)
   // -------------------------------------------------------------------------
+
+  applyApprovalRequest(req: AgentApprovalRequestPayload): GraphChange {
+    this.ensureWorker(req.sessionId);
+    const id = approvalNodeIdByRequest(req.requestId);
+    if (this.nodes.has(id)) return 'none';
+
+    this.addNode(
+      {
+        id,
+        type: 'approval',
+        position: { x: 0, y: 0 },
+        data: {
+          category: 'approval',
+          title: req.reason || 'Approval required',
+          subtitle: shortId(req.sessionId),
+          badge: req.kind || 'blocked',
+          status: 'waiting',
+          detail: req.action,
+          sessionId: req.sessionId,
+          approval: {
+            action: req.action,
+            reason: req.reason,
+            resolution: 'pending',
+            requestId: req.requestId
+          },
+          timestamp: req.timestamp
+        }
+      },
+      this.tail.get(req.sessionId) ?? workerNodeId(req.sessionId)
+    );
+    this.tail.set(req.sessionId, id);
+    return 'structural';
+  }
+
+  applyApprovalResolved(res: AgentApprovalResolvedPayload): GraphChange {
+    const id = approvalNodeIdByRequest(res.requestId);
+    const node = this.nodes.get(id);
+    if (!node?.data.approval) {
+      // Find by requestId in metadata if id differed
+      for (const [nid, candidate] of this.nodes) {
+        if (candidate.data.approval?.requestId === res.requestId) {
+          return this.resolveApprovalNode(nid, res.resolution, res.replacement ?? undefined);
+        }
+      }
+      return 'none';
+    }
+    return this.resolveApprovalNode(id, res.resolution, res.replacement ?? undefined);
+  }
+
+  private resolveApprovalNode(
+    nodeId: string,
+    resolution: string,
+    replacement?: string
+  ): GraphChange {
+    const node = this.nodes.get(nodeId);
+    if (!node?.data.approval) return 'none';
+    const res = resolution as 'approved' | 'modified' | 'rejected';
+    const isApprovedOrModified = res === 'approved' || res === 'modified';
+    this.patch(nodeId, {
+      status: isApprovedOrModified ? 'completed' : 'error',
+      badge: res,
+      detail: replacement ? `Modified: ${replacement}` : node.data.detail,
+      approval: {
+        ...node.data.approval,
+        resolution: res,
+        replacement
+      }
+    });
+    return 'structural';
+  }
 
   requestApproval(
     sessionId: string,
@@ -384,15 +457,8 @@ export class TelemetryGraph {
     return id;
   }
 
-  resolveApproval(nodeId: string, resolution: 'approved' | 'modified'): GraphChange {
-    const node = this.nodes.get(nodeId);
-    if (!node?.data.approval || node.data.approval.resolution !== 'pending') return 'none';
-    this.patch(nodeId, {
-      status: 'completed',
-      badge: resolution,
-      approval: { ...node.data.approval, resolution }
-    });
-    return 'structural';
+  resolveApproval(nodeId: string, resolution: 'approved' | 'modified' | 'rejected', replacement?: string): GraphChange {
+    return this.resolveApprovalNode(nodeId, resolution, replacement);
   }
 
   // -------------------------------------------------------------------------

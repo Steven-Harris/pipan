@@ -1,7 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { Edge } from '@xyflow/svelte';
-import type { AgentEventPayload, AgentSessionInfo } from '#lib/types/agent.ts';
+import type {
+  AgentApprovalRequestPayload,
+  AgentApprovalResolvedPayload,
+  AgentEventPayload,
+  AgentSessionInfo
+} from '#lib/types/agent.ts';
 import type { WebhookEvent } from '#lib/types/github.ts';
 import type { FlowNode } from '#lib/flow/layout.ts';
 import {
@@ -45,15 +50,23 @@ class FlowStore {
       await listen<AgentEventPayload>('agent:event', (e) => {
         this.schedule(this.graph.applyEvent(e.payload));
       }),
+      await listen<AgentApprovalRequestPayload>('agent:approval_request', (e) => {
+        this.schedule(this.graph.applyApprovalRequest(e.payload));
+      }),
+      await listen<AgentApprovalResolvedPayload>('agent:approval_resolved', (e) => {
+        this.schedule(this.graph.applyApprovalResolved(e.payload));
+      }),
       await listen<WebhookEvent>('github:webhook', (e) => {
         this.schedule(this.graph.applyWebhook(e.payload));
       })
     );
 
-    // Hydrate sessions that were spawned before this listener attached (e.g. after reload).
+    // Hydrate sessions and pending approvals spawned before this listener attached.
     try {
       const sessions = await invoke<AgentSessionInfo[]>('list_agent_sessions');
       for (const info of sessions) this.graph.applyStatus(info);
+      const pending = await invoke<AgentApprovalRequestPayload[]>('list_pending_approvals');
+      for (const req of pending) this.graph.applyApprovalRequest(req);
       this.publish();
     } catch {
       // Backend unavailable (plain browser dev server); the graph simply starts empty.
@@ -74,11 +87,31 @@ class FlowStore {
   }
 
   /**
-   * Resolves an approval gate in the graph. Phase 5 extends this to inject the decision
-   * back into the paused Pi RPC stream.
+   * Resolves an approval gate in the graph and invokes the Rust backend to inject
+   * the decision back into the paused Pi RPC stream.
    */
-  resolveApproval(nodeId: string, resolution: 'approved' | 'modified'): void {
-    this.schedule(this.graph.resolveApproval(nodeId, resolution));
+  async resolveApproval(
+    nodeId: string,
+    resolution: 'approved' | 'modified' | 'rejected',
+    replacement?: string
+  ): Promise<void> {
+    const node = this.nodes.find((n) => n.id === nodeId);
+    const reqId = node?.data?.approval?.requestId;
+
+    // Optimistically update the graph state
+    this.schedule(this.graph.resolveApproval(nodeId, resolution, replacement));
+
+    if (reqId) {
+      try {
+        await invoke('resolve_approval', {
+          requestId: reqId,
+          resolution,
+          replacement: replacement ?? null
+        });
+      } catch (err) {
+        console.error('Failed to send approval to backend:', err);
+      }
+    }
   }
 
   private schedule(change: GraphChange): void {

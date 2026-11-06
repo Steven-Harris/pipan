@@ -42,6 +42,6 @@ Build a desktop GUI wrapper for the `pi` AI coding agent using Tauri. The applic
 - [x] Integrate `dagre` to automatically recalculate the directed acyclic graph (DAG) layout top-to-bottom every time a new node is added, ensuring the UI remains organized without manual dragging.
 
 ### Phase 5: Interactive Steering & Review
-- [ ] Implement a "Plan Mode" interceptor: When Pi requests a destructive command (file delete, git push), pause the Pi child process in Rust.
-- [ ] Render the blocked action as an `ApprovalNode` in Svelte Flow, displaying "Approve" and "Modify" buttons inside the custom node.
-- [ ] Wire the frontend buttons to send a Tauri command back to Rust, which then injects the approval or modification back into the Pi RPC stdin stream.
+- [x] Implement a "Plan Mode" interceptor: When Pi requests a destructive command (file delete, git push), pause the Pi child process in Rust.
+- [x] Render the blocked action as an `ApprovalNode` in Svelte Flow, displaying "Approve" and "Modify" buttons inside the custom node.
+- [x] Wire the frontend buttons to send a Tauri command back to Rust, which then injects the approval or modification back into the Pi RPC stdin stream.
