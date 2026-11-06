@@ -455,13 +455,12 @@ fn build_pi_command(working_dir: &Path) -> Command {
             c.args(["--mode", "rpc", "--no-session"]);
             c
         } else if let Some(pi_cmd) = find_executable_in_path("pi.cmd", &resolved_path) {
-            let mut c = Command::new("cmd.exe");
-            let command_str = format!("\"{}\" --mode rpc --no-session", pi_cmd.display());
-            c.args(["/d", "/s", "/c", &command_str]);
+            let mut c = Command::new(pi_cmd);
+            c.args(["--mode", "rpc", "--no-session"]);
             c
         } else {
             let mut c = Command::new("cmd.exe");
-            c.args(["/d", "/s", "/c", "pi --mode rpc --no-session"]);
+            c.args(["/d", "/c", "pi", "--mode", "rpc", "--no-session"]);
             c
         };
         if !resolved_path.is_empty() {
@@ -753,6 +752,42 @@ mod tests {
         let joined_path = std::env::join_paths([&temp_dir]).unwrap();
         let found = find_executable_in_path(bin_name, &joined_path);
         assert_eq!(found.as_deref(), Some(bin_path.as_path()));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn test_windows_cmd_shim_spawns_without_escaped_quote_error() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "pipan test {}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("create temp test dir");
+
+        let bin_path = temp_dir.join("pi.cmd");
+        std::fs::write(&bin_path, "@ECHO off\r\nECHO args:%*\r\n").expect("write mock pi.cmd");
+
+        let output = Command::new(&bin_path)
+            .args(["--mode", "rpc", "--no-session"])
+            .current_dir(&temp_dir)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .await
+            .expect("spawn pi.cmd");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "expected success, got status {:?}, stderr: {}",
+            output.status,
+            stderr
+        );
+        assert_eq!(stdout.trim(), "args:--mode rpc --no-session");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
