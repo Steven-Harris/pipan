@@ -9,7 +9,7 @@
     Sparkles,
     Loader2
   } from 'lucide-svelte';
-  import { chatStore } from '$lib/stores/chat.svelte';
+  import { chatStore } from '#lib/stores/chat.svelte.ts';
 
   let isPickingFolder = $state(false);
 

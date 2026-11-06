@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { AlertCircle, Terminal, X, ChevronDown, ChevronUp } from 'lucide-svelte';
-  import { chatStore } from '$lib/stores/chat.svelte';
-  import SessionHeader from '$lib/components/SessionHeader.svelte';
-  import MessageList from '$lib/components/MessageList.svelte';
-  import ChatInput from '$lib/components/ChatInput.svelte';
+  import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import SessionHeader from '#lib/components/SessionHeader.svelte';
+  import MessageList from '#lib/components/MessageList.svelte';
+  import ChatInput from '#lib/components/ChatInput.svelte';
 
   let showStderrDrawer = $state(false);
 

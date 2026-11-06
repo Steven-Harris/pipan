@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Sparkles, ChevronDown, ChevronRight } from 'lucide-svelte';
-  import type { ThinkingContentBlock } from '$lib/types/pi';
+  import type { ThinkingContentBlock } from '#lib/types/pi.ts';
 
   let { block }: { block: ThinkingContentBlock } = $props();
 

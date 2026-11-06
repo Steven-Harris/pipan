@@ -13,7 +13,7 @@ import type {
   TextContentBlock,
   ThinkingContentBlock,
   ToolCallContentBlock
-} from '$lib/types/pi';
+} from '#lib/types/pi.ts';
 
 function makeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
