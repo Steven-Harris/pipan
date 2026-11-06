@@ -1,8 +1,6 @@
 pub mod pi_rpc;
 
-use pi_rpc::{
-    get_pi_status, send_pi_command, start_pi_session, stop_pi_session, PiRpcManager,
-};
+use pi_rpc::{PiRpcManager, get_pi_status, send_pi_command, start_pi_session, stop_pi_session};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
