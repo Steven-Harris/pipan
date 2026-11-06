@@ -19,7 +19,13 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin};
 use tokio::sync::Mutex;
 
-use crate::pi_rpc::{build_pi_command, terminate_process_tree, trim_line_endings};
+use crate::approval::{
+    ApprovalDecision, ApprovalRegistry, ApprovalRequestPayload, ApprovalResolvedPayload,
+    build_extension_ui_response, ensure_plan_gate_extension, parse_approval_request,
+};
+use crate::pi_rpc::{
+    build_pi_command_with_args, terminate_process_tree, trim_line_endings,
+};
 use crate::worktree::{self, WorktreeInfo};
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,6 +72,7 @@ struct AgentEntry {
 #[derive(Clone, Default)]
 pub struct AgentManager {
     sessions: Arc<Mutex<HashMap<String, AgentEntry>>>,
+    approvals: ApprovalRegistry,
 }
 
 fn now_ms() -> u64 {
@@ -166,7 +173,15 @@ impl AgentManager {
         let session_id = worktree::new_session_id();
         let wt = worktree::create_worktree(repo_path, &root, &session_id, base_ref).await?;
 
-        let mut cmd = build_pi_command(Path::new(&wt.path));
+        // Plan Mode: load the bundled interceptor extension into this session so destructive
+        // commands pause for user approval before execution.
+        let mut extra_args: Vec<std::ffi::OsString> = Vec::new();
+        if let Ok(ext_path) = ensure_plan_gate_extension(app) {
+            extra_args.push("--extension".into());
+            extra_args.push(ext_path.into_os_string());
+        }
+
+        let mut cmd = build_pi_command_with_args(Path::new(&wt.path), &extra_args);
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
@@ -245,6 +260,7 @@ impl AgentManager {
             let app = app.clone();
             let sid = session_id.clone();
             let sessions = self.sessions.clone();
+            let approvals = self.approvals.clone();
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stdout);
                 let mut buf = Vec::with_capacity(8192);
@@ -259,6 +275,67 @@ impl AgentManager {
                             }
                             match serde_json::from_slice::<Value>(bytes) {
                                 Ok(event) => {
+                                    // Plan Mode gate: check if this is a dialog request asking
+                                    // for approval of a destructive action.
+                                    if let Some((req_id, action)) = parse_approval_request(&event) {
+                                        let payload = ApprovalRequestPayload {
+                                            request_id: req_id.clone(),
+                                            session_id: sid.clone(),
+                                            tool_name: action.tool_name.clone(),
+                                            tool_call_id: action.tool_call_id.clone(),
+                                            kind: action.kind.clone(),
+                                            reason: action.reason.clone(),
+                                            action: action.action.clone(),
+                                            timestamp: now_ms(),
+                                        };
+                                        let _ = app.emit("agent:approval_request", &payload);
+
+                                        // Register the gate in Rust. When the user approves/modifies/rejects,
+                                        // write the extension_ui_response back to Pi's stdin.
+                                        let rx = approvals
+                                            .register(req_id.clone(), sid.clone(), action)
+                                            .await;
+                                        let app_c = app.clone();
+                                        let sid_c = sid.clone();
+                                        let sessions_c = sessions.clone();
+                                        tokio::spawn(async move {
+                                            if let Ok(decision) = rx.await {
+                                                let resp = build_extension_ui_response(&req_id, &decision);
+                                                let mut payload = match serde_json::to_vec(&resp) {
+                                                    Ok(p) => p,
+                                                    Err(_) => return,
+                                                };
+                                                payload.push(b'\n');
+
+                                                let mut guard = sessions_c.lock().await;
+                                                if let Some(entry) = guard.get_mut(&sid_c)
+                                                    && let Some(active) = entry.active.as_mut()
+                                                    && let Some(stdin) = active.stdin.as_mut()
+                                                {
+                                                    let _ = stdin.write_all(&payload).await;
+                                                    let _ = stdin.flush().await;
+                                                }
+
+                                                let (res_str, repl) = match decision {
+                                                    ApprovalDecision::Approve => ("approved".to_string(), None),
+                                                    ApprovalDecision::Reject => ("rejected".to_string(), None),
+                                                    ApprovalDecision::Modify(m) => ("modified".to_string(), Some(m)),
+                                                };
+                                                let _ = app_c.emit(
+                                                    "agent:approval_resolved",
+                                                    ApprovalResolvedPayload {
+                                                        request_id: req_id,
+                                                        session_id: sid_c,
+                                                        resolution: res_str,
+                                                        replacement: repl,
+                                                        timestamp: now_ms(),
+                                                    },
+                                                );
+                                            }
+                                        });
+                                        continue;
+                                    }
+
                                     let (kind, data) = classify_event(&event);
                                     let _ = app.emit(
                                         "agent:event",
@@ -388,6 +465,7 @@ impl AgentManager {
         if let Some(active) = active {
             Self::terminate(active).await;
         }
+        self.approvals.cancel_session(session_id).await;
 
         let info = {
             let mut guard = self.sessions.lock().await;
@@ -419,6 +497,44 @@ impl AgentManager {
             Self::terminate(active).await;
         }
     }
+
+    pub fn approvals(&self) -> &ApprovalRegistry {
+        &self.approvals
+    }
+}
+
+#[tauri::command]
+pub async fn resolve_approval(
+    manager: State<'_, AgentManager>,
+    request_id: String,
+    resolution: String,
+    replacement: Option<String>,
+) -> Result<(), String> {
+    let decision = match resolution.trim().to_lowercase().as_str() {
+        "approve" | "approved" => ApprovalDecision::Approve,
+        "reject" | "rejected" | "cancel" | "cancelled" => ApprovalDecision::Reject,
+        "modify" | "modified" => {
+            let repl = replacement
+                .map(|r| r.trim().to_string())
+                .filter(|r| !r.is_empty())
+                .ok_or_else(|| "Replacement command required when modifying an action".to_string())?;
+            ApprovalDecision::Modify(repl)
+        }
+        other => return Err(format!("Unknown resolution: {}", other)),
+    };
+    manager
+        .approvals()
+        .resolve(&request_id, decision)
+        .await
+        .map(|_| ())
+        .ok_or_else(|| format!("Approval request not found or already resolved: {}", request_id))
+}
+
+#[tauri::command]
+pub async fn list_pending_approvals(
+    manager: State<'_, AgentManager>,
+) -> Result<Vec<ApprovalRequestPayload>, String> {
+    Ok(manager.approvals().list().await)
 }
 
 #[tauri::command]

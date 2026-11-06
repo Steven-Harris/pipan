@@ -1,11 +1,13 @@
 pub mod agent;
+pub mod approval;
 pub mod github;
 pub mod pi_rpc;
 pub mod webhook;
 pub mod worktree;
 
 use agent::{
-    AgentManager, list_agent_sessions, send_agent_command, spawn_agent_session, stop_agent_session,
+    AgentManager, list_agent_sessions, list_pending_approvals, resolve_approval,
+    send_agent_command, spawn_agent_session, stop_agent_session,
 };
 
 use github::{
@@ -35,6 +37,8 @@ pub fn run() {
             send_agent_command,
             stop_agent_session,
             list_agent_sessions,
+            resolve_approval,
+            list_pending_approvals,
             gh_status,
             gh_json,
             gh_pr_view,

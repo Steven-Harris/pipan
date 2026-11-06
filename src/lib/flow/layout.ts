@@ -11,7 +11,7 @@ const NODE_SIZES: Record<FlowNodeType, { width: number; height: number }> = {
   orchestrator: { width: 260, height: 112 },
   worker: { width: 276, height: 132 },
   action: { width: 244, height: 96 },
-  approval: { width: 276, height: 156 }
+  approval: { width: 290, height: 172 }
 };
 
 function sizeOf(node: FlowNode): { width: number; height: number } {

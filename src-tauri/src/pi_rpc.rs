@@ -444,6 +444,11 @@ pub(crate) async fn terminate_process_tree(child: &mut Child, pid: Option<u32>) 
 }
 
 pub(crate) fn build_pi_command(working_dir: &Path) -> Command {
+    build_pi_command_with_args(working_dir, &[])
+}
+
+/// Like [`build_pi_command`] but appends `extra_args` after `--mode rpc --no-session`.
+pub(crate) fn build_pi_command_with_args(working_dir: &Path, extra_args: &[OsString]) -> Command {
     let resolved_path = get_augmented_path();
 
     #[cfg(target_os = "windows")]
@@ -466,6 +471,7 @@ pub(crate) fn build_pi_command(working_dir: &Path) -> Command {
         if !resolved_path.is_empty() {
             cmd.env("PATH", &resolved_path);
         }
+        cmd.args(extra_args);
         cmd.current_dir(working_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -484,6 +490,7 @@ pub(crate) fn build_pi_command(working_dir: &Path) -> Command {
             cmd.env("PATH", &resolved_path);
         }
         cmd.args(["--mode", "rpc", "--no-session"])
+            .args(extra_args)
             .current_dir(working_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

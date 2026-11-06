@@ -54,3 +54,28 @@ export interface AgentEventPayload {
   timestamp: number;
   data: Record<string, unknown>;
 }
+
+/**
+ * Phase 5 Approval Request emitted by Rust over `agent:approval_request`.
+ */
+export interface AgentApprovalRequestPayload {
+  requestId: string;
+  sessionId: string;
+  toolName: string;
+  toolCallId?: string | null;
+  kind: 'delete' | 'git-push' | 'git-destructive' | string;
+  reason: string;
+  action: string;
+  timestamp: number;
+}
+
+/**
+ * Phase 5 Approval Resolved event emitted by Rust over `agent:approval_resolved`.
+ */
+export interface AgentApprovalResolvedPayload {
+  requestId: string;
+  sessionId: string;
+  resolution: 'approved' | 'modified' | 'rejected' | string;
+  replacement?: string | null;
+  timestamp: number;
+}
