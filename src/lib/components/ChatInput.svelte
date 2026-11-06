@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Send, Compass, Clock, Square } from 'lucide-svelte';
-  import { chatStore } from '$lib/stores/chat.svelte';
-  import type { StreamingBehavior } from '$lib/types/pi';
+  import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import type { StreamingBehavior } from '#lib/types/pi.ts';
 
   let draft = $state('');
   let textareaEl = $state<HTMLTextAreaElement | null>(null);

@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "",
   "type": "module",
+  "imports": {
+    "#lib": "./src/lib/index.js",
+    "#lib/*": "./src/lib/*"
+  },
   "packageManager": "pnpm@10.5.2",
   "scripts": {
     "dev": "vite dev",

@@ -7,7 +7,7 @@
     ChevronDown,
     ChevronRight
   } from 'lucide-svelte';
-  import type { ToolCallContentBlock } from '$lib/types/pi';
+  import type { ToolCallContentBlock } from '#lib/types/pi.ts';
 
   let { block }: { block: ToolCallContentBlock } = $props();
 

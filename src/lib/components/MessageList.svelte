@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open } from '@tauri-apps/plugin-dialog';
   import { Terminal, FolderOpen, ArrowDown, Sparkles, MessageSquareCode } from 'lucide-svelte';
-  import { chatStore } from '$lib/stores/chat.svelte';
+  import { chatStore } from '#lib/stores/chat.svelte.ts';
   import MessageItem from './MessageItem.svelte';
 
   let viewport = $state<HTMLDivElement | null>(null);

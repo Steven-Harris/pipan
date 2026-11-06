@@ -1,6 +1,6 @@
 <script lang="ts">
   import { User, Bot, AlertTriangle } from 'lucide-svelte';
-  import type { ChatMessage } from '$lib/types/pi';
+  import type { ChatMessage } from '#lib/types/pi.ts';
   import ThinkingBlock from './ThinkingBlock.svelte';
   import ToolCallCard from './ToolCallCard.svelte';
 
