@@ -25,10 +25,10 @@ Build a desktop GUI wrapper for the `pi` AI coding agent using Tauri. The applic
 - [x] Set up the basic UI shell (Sidebar for history/PRs, Main canvas for the Svelte Flow dashboard, Bottom drawer for chat/steering input).
 
 ### Phase 2: Rust Backend - Pi Core & Git Worktrees
-- [ ] Create a Rust command (`spawn_agent_session`) that executes `git worktree add` to create an isolated directory for the new session.
-- [ ] Spawn the `pi` CLI as a child process utilizing RPC mode, setting its working directory to the newly created worktree.
-- [ ] Implement a Rust async loop using `tokio` to read the stdout JSON RPC stream from Pi.
-- [ ] Route Pi's telemetry events (`thought`, `tool_call`, `task_complete`) over Tauri's IPC (`app_handle.emit_all`) to the Svelte frontend.
+- [x] Create a Rust command (`spawn_agent_session`) that executes `git worktree add` to create an isolated directory for the new session.
+- [x] Spawn the `pi` CLI as a child process utilizing RPC mode, setting its working directory to the newly created worktree.
+- [x] Implement a Rust async loop using `tokio` to read the stdout JSON RPC stream from Pi.
+- [x] Route Pi's telemetry events (`thought`, `tool_call`, `task_complete`) over Tauri's IPC (`app_handle.emit_all`) to the Svelte frontend.
 
 ### Phase 3: Rust Backend - GitHub CLI & Webhook Tunnel
 - [ ] Create Rust commands to execute `gh` CLI operations synchronously and return JSON payloads (e.g., `gh pr view --json`).
