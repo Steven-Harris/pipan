@@ -87,7 +87,7 @@
         </div>
 
         {#if message.usage?.totalTokens}
-          <span class="font-mono text-[10px] text-zinc-500">
+          <span class="font-mono text-[10px] text-zinc-400 tabular-nums">
             {message.usage.totalTokens.toLocaleString()} tok
           </span>
         {/if}

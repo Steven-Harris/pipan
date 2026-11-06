@@ -7,7 +7,9 @@
     PowerOff,
     Cpu,
     Sparkles,
-    Loader2
+    Loader2,
+    PanelLeft,
+    Workflow
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
 
@@ -45,8 +47,8 @@
     }
     return {
       label: 'Disconnected',
-      dotClass: 'bg-zinc-500',
-      badgeClass: 'border-zinc-700 bg-zinc-800/80 text-zinc-400'
+      dotClass: 'bg-zinc-400',
+      badgeClass: 'border-zinc-700 bg-zinc-800/80 text-zinc-300'
     };
   });
 
@@ -99,11 +101,21 @@
 </script>
 
 <header class="flex items-center justify-between gap-3 border-b border-zinc-800/80 bg-zinc-900/70 px-4 py-2.5 backdrop-blur-md">
-  <!-- Left: Brand, Connection Status, Workspace, and Model Badge -->
+  <!-- Left: Sidebar Toggle, Brand, Connection Status, Workspace, and Model Badge -->
   <div class="flex min-w-0 flex-wrap items-center gap-2.5">
+    <button
+      type="button"
+      onclick={() => chatStore.toggleSidebar()}
+      class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+      title={chatStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+      aria-label={chatStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+    >
+      <PanelLeft class="h-3.5 w-3.5" />
+    </button>
+
     <div class="flex items-center gap-2 pr-1">
-      <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 font-semibold text-xs">
-        π
+      <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600/20 border border-indigo-500/30 text-indigo-300">
+        <Workflow class="h-3.5 w-3.5" />
       </div>
       <span class="font-semibold tracking-tight text-zinc-100 text-sm">Pipan</span>
     </div>

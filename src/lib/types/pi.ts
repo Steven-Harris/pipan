@@ -242,3 +242,37 @@ export interface ChatMessage {
   usage?: TokenUsage;
   isOptimistic?: boolean;
 }
+
+export interface SessionHistoryEntry {
+  id: string;
+  mode: PiSessionMode;
+  cwd: string | null;
+  label: string;
+  startedAt: number;
+  pid: number | null;
+  state: PiConnectionState;
+  messageCount: number;
+  toolCallCount: number;
+}
+
+export type FlowNodeCategory =
+  | 'supervisor'
+  | 'orchestrator'
+  | 'user_prompt'
+  | 'thinking'
+  | 'tool_call'
+  | 'assistant_reply';
+
+export interface FlowNodeMeta {
+  [key: string]: unknown;
+  category: FlowNodeCategory;
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  status: 'idle' | 'running' | 'completed' | 'error' | 'disconnected';
+  detail?: string;
+  timestamp?: number;
+  durationMs?: number;
+  tokens?: number;
+}
+

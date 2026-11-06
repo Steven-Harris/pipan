@@ -9,6 +9,7 @@ import type {
   PiRpcEvent,
   PiSessionStatus,
   PiStderrPayload,
+  SessionHistoryEntry,
   StreamingBehavior,
   TextContentBlock,
   ThinkingContentBlock,
@@ -19,7 +20,13 @@ function makeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `id-${Date.now()}-${hex}`;
+  }
+  return `id-${Date.now()}`;
 }
 
 function extractTextFromUserContent(content: unknown): string {
@@ -61,6 +68,17 @@ function extractToolResultText(
     .join('\n');
 }
 
+function formatWorkspaceLabel(mode: 'headless' | 'directory', cwd: string | null): string {
+  if (mode === 'headless' || !cwd) {
+    return 'Headless Sandbox';
+  }
+  const cleaned = cwd.replace(/^\\\\\?\\/, '');
+  const sep = cleaned.includes('\\') ? '\\' : '/';
+  const parts = cleaned.split(/[\\/]+/).filter(Boolean);
+  if (parts.length <= 2) return cleaned;
+  return `…${sep}${parts.slice(-2).join(sep)}`;
+}
+
 class ChatStore {
   sessionStatus = $state<PiSessionStatus>({
     state: 'disconnected',
@@ -79,6 +97,13 @@ class ChatStore {
   modelInfo = $state<PiModelInfo | null>(null);
   isCompacting = $state<boolean>(false);
 
+  // UI Shell state (Phase 1)
+  sidebarOpen = $state<boolean>(true);
+  drawerMode = $state<'split' | 'expanded' | 'collapsed'>('split');
+  selectedNodeId = $state<string | null>(null);
+  sessionHistory = $state<SessionHistoryEntry[]>([]);
+  activeSessionId = $state<string | null>(null);
+
   private initialized = false;
   private unlisteners: UnlistenFn[] = [];
   // Maps `contentIndex` of the currently streaming assistant message to its index in `msg.blocks`
@@ -90,6 +115,7 @@ class ChatStore {
 
     const unlistenEvent = await listen<PiRpcEvent>('pi:event', (event) => {
       this.handlePiEvent(event.payload);
+      this.syncActiveSessionHistory();
     });
 
     const unlistenStatus = await listen<PiSessionStatus>('pi:status', (event) => {
@@ -101,6 +127,7 @@ class ChatStore {
         this.isAgentRunning = false;
         this.finalizeStreamingMessages();
       }
+      this.syncActiveSessionHistory();
     });
 
     const unlistenStderr = await listen<PiStderrPayload>('pi:stderr', (event) => {
@@ -113,6 +140,7 @@ class ChatStore {
       const status = await invoke<PiSessionStatus>('get_pi_status');
       this.sessionStatus = status;
       if (status.state === 'running') {
+        this.recordSessionStart(status);
         await this.requestState();
       }
     } catch (err) {
@@ -128,6 +156,55 @@ class ChatStore {
     this.initialized = false;
   }
 
+  toggleSidebar(): void {
+    this.sidebarOpen = !this.sidebarOpen;
+  }
+
+  setDrawerMode(mode: 'split' | 'expanded' | 'collapsed'): void {
+    this.drawerMode = mode;
+  }
+
+  private recordSessionStart(status: PiSessionStatus): void {
+    const id = makeId();
+    this.activeSessionId = id;
+    const entry: SessionHistoryEntry = {
+      id,
+      mode: status.mode,
+      cwd: status.cwd,
+      label: formatWorkspaceLabel(status.mode, status.cwd),
+      startedAt: Date.now(),
+      pid: status.pid,
+      state: status.state,
+      messageCount: 0,
+      toolCallCount: 0
+    };
+    this.sessionHistory = [entry, ...this.sessionHistory.slice(0, 19)];
+  }
+
+  private syncActiveSessionHistory(): void {
+    if (!this.activeSessionId) return;
+    const idx = this.sessionHistory.findIndex((s) => s.id === this.activeSessionId);
+    if (idx === -1) return;
+
+    let toolCalls = 0;
+    for (const msg of this.messages) {
+      for (const b of msg.blocks) {
+        if (b.type === 'tool_call') toolCalls += 1;
+      }
+    }
+
+    const current = this.sessionHistory[idx];
+    this.sessionHistory[idx] = {
+      ...current,
+      state: this.sessionStatus.state,
+      pid: this.sessionStatus.pid,
+      cwd: this.sessionStatus.cwd,
+      label: formatWorkspaceLabel(this.sessionStatus.mode, this.sessionStatus.cwd),
+      messageCount: this.messages.length,
+      toolCallCount: toolCalls
+    };
+  }
+
   async startHeadless(): Promise<void> {
     this.lastError = null;
     this.stderrLines = [];
@@ -135,11 +212,13 @@ class ChatStore {
     this.steeringQueue = [];
     this.followUpQueue = [];
     this.modelInfo = null;
+    this.selectedNodeId = null;
     this.activeBlockIndexMap.clear();
 
     try {
       const status = await invoke<PiSessionStatus>('start_pi_session', { cwd: null });
       this.sessionStatus = status;
+      this.recordSessionStart(status);
       await this.requestState();
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
@@ -153,11 +232,13 @@ class ChatStore {
     this.steeringQueue = [];
     this.followUpQueue = [];
     this.modelInfo = null;
+    this.selectedNodeId = null;
     this.activeBlockIndexMap.clear();
 
     try {
       const status = await invoke<PiSessionStatus>('start_pi_session', { cwd });
       this.sessionStatus = status;
+      this.recordSessionStart(status);
       await this.requestState();
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
@@ -172,6 +253,7 @@ class ChatStore {
       this.steeringQueue = [];
       this.followUpQueue = [];
       this.finalizeStreamingMessages();
+      this.syncActiveSessionHistory();
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
     }
@@ -250,7 +332,9 @@ class ChatStore {
     this.messages = [];
     this.steeringQueue = [];
     this.followUpQueue = [];
+    this.selectedNodeId = null;
     this.activeBlockIndexMap.clear();
+    this.recordSessionStart(this.sessionStatus);
 
     try {
       await this.sendCommand({ id: makeId(), type: 'new_session' });

@@ -69,7 +69,7 @@
           : chatStore.isAgentRunning
             ? 'Type to steer Pi mid-run (Enter to Steer, or click Queue Follow-up)…'
             : 'Message Pi… (Enter to send, Shift+Enter for newline)'}
-        class="max-h-44 min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        class="max-h-44 min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       ></textarea>
 
       <div class="flex shrink-0 items-center gap-1.5">

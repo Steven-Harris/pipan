@@ -19,10 +19,10 @@ Build a desktop GUI wrapper for the `pi` AI coding agent using Tauri. The applic
 ## 3. Execution Phases
 
 ### Phase 1: Foundation & Tauri Scaffolding
-- [ ] Initialize a new Tauri project using the Svelte/TypeScript/Vite template.
-- [ ] Install frontend dependencies: `tailwindcss`, `@xyflow/svelte`, `dagre`, and `lucide-svelte` (for icons).
-- [ ] Configure Tailwind and verify the IPC connection between the Svelte frontend and the Rust backend.
-- [ ] Set up the basic UI shell (Sidebar for history/PRs, Main canvas for the Svelte Flow dashboard, Bottom drawer for chat/steering input).
+- [x] Initialize a new Tauri project using the Svelte/TypeScript/Vite template.
+- [x] Install frontend dependencies: `tailwindcss`, `@xyflow/svelte`, `dagre`, and `lucide-svelte` (for icons).
+- [x] Configure Tailwind and verify the IPC connection between the Svelte frontend and the Rust backend.
+- [x] Set up the basic UI shell (Sidebar for history/PRs, Main canvas for the Svelte Flow dashboard, Bottom drawer for chat/steering input).
 
 ### Phase 2: Rust Backend - Pi Core & Git Worktrees
 - [ ] Create a Rust command (`spawn_agent_session`) that executes `git worktree add` to create an isolated directory for the new session.
