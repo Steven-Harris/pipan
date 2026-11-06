@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.0.2](https://github.com/Steven-Harris/pipan/releases/tag/v0.0.2) - 2026-11-06
+
+### What's Changed
+* docs: replace template boilerplate with project README by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/11
+* ci: remove duplicate prereleased trigger from release workflow by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/12
+* fix(windows): avoid escaped quotes when spawning pi.cmd by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/14
+* ci: add CHANGELOG.md and sync release notes in release workflow by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/13
+
+
+**Full Changelog**: https://github.com/Steven-Harris/pipan/compare/v0.0.1...v0.0.2
+
 ## [v0.0.1](https://github.com/Steven-Harris/pipan/releases/tag/v0.0.1) - 2026-11-06
 
 ### What's Changed
