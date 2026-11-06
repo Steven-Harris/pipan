@@ -24,8 +24,88 @@ permissions:
   contents: write
 
 jobs:
+  sync-version:
+    name: Sync version to main
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.sync.outputs.commit_sha }}
+      release_id: ${{ steps.sync.outputs.release_id }}
+      tag_name: ${{ steps.sync.outputs.tag_name }}
+      version: ${{ steps.sync.outputs.version }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update package.json and Cargo.toml from release tag
+        id: sync
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          REF_NAME: ${{ github.ref }}
+        run: |
+          TAG=""
+          if [ "${EVENT_NAME}" = "release" ]; then
+            TAG="${RELEASE_TAG}"
+            echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+          elif [[ "${REF_NAME}" == refs/tags/* ]]; then
+            TAG="${REF_NAME#refs/tags/}"
+          fi
+
+          if [ -n "${TAG}" ]; then
+            VERSION="${TAG#v}"
+            echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+            node -e '
+              const fs = require("fs");
+              const version = process.argv[1];
+
+              for (const file of ["package.json", "src-tauri/tauri.conf.json"]) {
+                const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+                pkg.version = version;
+                fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+              }
+
+              const cargoTomlPath = "src-tauri/Cargo.toml";
+              const cargoToml = fs.readFileSync(cargoTomlPath, "utf8");
+              const updatedCargoToml = cargoToml.replace(
+                /(\[package\][\s\S]*?^version\s*=\s*)"[^"]*"/m,
+                `$1"${version}"`
+              );
+              fs.writeFileSync(cargoTomlPath, updatedCargoToml);
+
+              const cargoLockPath = "src-tauri/Cargo.lock";
+              if (fs.existsSync(cargoLockPath)) {
+                const cargoLock = fs.readFileSync(cargoLockPath, "utf8");
+                const updatedCargoLock = cargoLock.replace(
+                  /(\[\[package\]\]\r?\nname = "pipan"\r?\nversion = )"[^"]*"/,
+                  `$1"${version}"`
+                );
+                fs.writeFileSync(cargoLockPath, updatedCargoLock);
+              }
+            ' "${VERSION}"
+
+            if ! git diff --quiet package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+              git commit -m "chore(release): v${VERSION}"
+              git push origin HEAD:main
+              git tag -f "${TAG}" HEAD
+              git push origin "refs/tags/${TAG}" --force
+            fi
+          fi
+
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   release-tauri:
     name: Build & Release (${{ matrix.platform }})
+    needs: sync-version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -51,6 +131,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.sync-version.outputs.commit_sha || github.ref }}
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-22.04'
@@ -85,31 +167,6 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Sync version from release tag
-        id: release_meta
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-            echo "release_id=${{ github.event.release.id }}" >> "$GITHUB_OUTPUT"
-            echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ -n "${TAG:-}" ]; then
-            VERSION="${TAG#v}"
-            node -e '
-              const fs = require("fs");
-              for (const file of ["package.json", "src-tauri/tauri.conf.json"]) {
-                const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
-                pkg.version = process.argv[1];
-                fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
-              }
-            ' "$VERSION"
-          fi
-
       - name: Build Tauri app and publish release
         uses: tauri-apps/tauri-action@v1
         env:
@@ -117,8 +174,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          releaseId: ${{ steps.release_meta.outputs.release_id }}
-          tagName: ${{ steps.release_meta.outputs.tag_name || 'v__VERSION__' }}
+          releaseId: ${{ needs.sync-version.outputs.release_id }}
+          tagName: ${{ needs.sync-version.outputs.tag_name || 'v__VERSION__' }}
           releaseName: 'pipan v__VERSION__'
           releaseBody: 'See the release assets below to download and install for your platform.'
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
