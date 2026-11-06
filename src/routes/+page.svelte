@@ -1,156 +1,75 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from 'svelte';
+  import { AlertCircle, Terminal, X, ChevronDown, ChevronUp } from 'lucide-svelte';
+  import { chatStore } from '$lib/stores/chat.svelte';
+  import SessionHeader from '$lib/components/SessionHeader.svelte';
+  import MessageList from '$lib/components/MessageList.svelte';
+  import ChatInput from '$lib/components/ChatInput.svelte';
 
-  let name = $state("");
-  let greetMsg = $state("");
+  let showStderrDrawer = $state(false);
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
-  }
+  onMount(() => {
+    chatStore.init();
+  });
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<div class="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+  <SessionHeader />
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
+  <!-- Error Banner -->
+  {#if chatStore.lastError}
+    <div class="flex items-center justify-between gap-3 border-b border-rose-500/30 bg-rose-950/50 px-4 py-2 text-xs text-rose-200">
+      <div class="flex min-w-0 items-center gap-2">
+        <AlertCircle class="h-4 w-4 shrink-0 text-rose-400" />
+        <span class="truncate">{chatStore.lastError}</span>
+      </div>
+      <button
+        type="button"
+        onclick={() => chatStore.dismissError()}
+        class="rounded p-1 text-rose-300 hover:bg-rose-900/50 cursor-pointer"
+        title="Dismiss error"
+      >
+        <X class="h-3.5 w-3.5" />
+      </button>
+    </div>
+  {/if}
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+  <!-- Collapsible Stderr Diagnostic Bar -->
+  {#if chatStore.stderrLines.length > 0}
+    <div class="border-b border-zinc-800 bg-zinc-900/90 text-xs">
+      <div class="flex items-center justify-between px-4 py-1.5 text-zinc-400">
+        <button
+          type="button"
+          onclick={() => (showStderrDrawer = !showStderrDrawer)}
+          class="flex items-center gap-2 hover:text-zinc-200 cursor-pointer"
+        >
+          <Terminal class="h-3.5 w-3.5 text-amber-400" />
+          <span>Pi Diagnostics ({chatStore.stderrLines.length})</span>
+          {#if showStderrDrawer}
+            <ChevronUp class="h-3.5 w-3.5" />
+          {:else}
+            <ChevronDown class="h-3.5 w-3.5" />
+          {/if}
+        </button>
+        <button
+          type="button"
+          onclick={() => chatStore.clearStderr()}
+          class="text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer"
+        >
+          Clear
+        </button>
+      </div>
+      {#if showStderrDrawer}
+        <div class="max-h-36 overflow-y-auto border-t border-zinc-800/80 bg-zinc-950 px-4 py-2 font-mono text-[11px] text-zinc-400 space-y-1">
+          {#each chatStore.stderrLines as item, idx (idx)}
+            <div class="whitespace-pre-wrap break-words">{item.line}</div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
-<style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+  <MessageList />
 
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
-</style>
+  <ChatInput />
+</div>
