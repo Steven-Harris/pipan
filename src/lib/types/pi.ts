@@ -261,7 +261,30 @@ export type FlowNodeCategory =
   | 'user_prompt'
   | 'thinking'
   | 'tool_call'
-  | 'assistant_reply';
+  | 'assistant_reply'
+  | 'worker'
+  | 'action'
+  | 'approval';
+
+export type FlowNodeStatus =
+  | 'idle'
+  | 'running'
+  | 'completed'
+  | 'error'
+  | 'disconnected'
+  | 'waiting';
+
+/** Svelte Flow `type` keys registered in FlowCanvas. */
+export type FlowNodeType = 'pipan' | 'orchestrator' | 'worker' | 'action' | 'approval';
+
+export type ApprovalResolution = 'pending' | 'approved' | 'modified';
+
+export interface FlowApprovalRequest {
+  /** The blocked action, e.g. a shell command or file path. */
+  action: string;
+  reason?: string;
+  resolution: ApprovalResolution;
+}
 
 export interface FlowNodeMeta {
   [key: string]: unknown;
@@ -269,10 +292,20 @@ export interface FlowNodeMeta {
   title: string;
   subtitle?: string;
   badge?: string;
-  status: 'idle' | 'running' | 'completed' | 'error' | 'disconnected';
+  status: FlowNodeStatus;
   detail?: string;
   timestamp?: number;
   durationMs?: number;
   tokens?: number;
+  /** Worktree agent session this node belongs to (Phase 2 `agent:*` events). */
+  sessionId?: string;
+  /** Git branch of the worker's isolated worktree. */
+  branch?: string;
+  /** Number of tool calls a worker has issued. */
+  toolCount?: number;
+  /** Origin of an action node. */
+  origin?: 'pi' | 'github';
+  /** Present on approval nodes. */
+  approval?: FlowApprovalRequest;
 }
 

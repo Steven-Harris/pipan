@@ -36,10 +36,10 @@ Build a desktop GUI wrapper for the `pi` AI coding agent using Tauri. The applic
 - [x] Configure the local HTTP server to receive GitHub webhook payloads (issue comments, PR reviews, CI status) and immediately broadcast them to the Svelte frontend via Tauri IPC.
 
 ### Phase 4: Frontend - The Living Dashboard (Svelte Flow)
-- [ ] Create custom Svelte Flow node components for the orchestration graph: `OrchestratorNode.svelte`, `WorkerNode.svelte`, `ActionNode.svelte`, and `ApprovalNode.svelte`.
-- [ ] Implement Svelte state (using runes or Svelte stores) that listens to Tauri IPC events from the Pi core.
-- [ ] Map Pi's incoming telemetry to graph updates: append new nodes to the nodes array on `tool_call` or `agent_spawned`, and dynamically update node status properties on `tool_result`.
-- [ ] Integrate `dagre` to automatically recalculate the directed acyclic graph (DAG) layout top-to-bottom every time a new node is added, ensuring the UI remains organized without manual dragging.
+- [x] Create custom Svelte Flow node components for the orchestration graph: `OrchestratorNode.svelte`, `WorkerNode.svelte`, `ActionNode.svelte`, and `ApprovalNode.svelte`.
+- [x] Implement Svelte state (using runes or Svelte stores) that listens to Tauri IPC events from the Pi core.
+- [x] Map Pi's incoming telemetry to graph updates: append new nodes to the nodes array on `tool_call` or `agent_spawned`, and dynamically update node status properties on `tool_result`.
+- [x] Integrate `dagre` to automatically recalculate the directed acyclic graph (DAG) layout top-to-bottom every time a new node is added, ensuring the UI remains organized without manual dragging.
 
 ### Phase 5: Interactive Steering & Review
 - [ ] Implement a "Plan Mode" interceptor: When Pi requests a destructive command (file delete, git push), pause the Pi child process in Rust.

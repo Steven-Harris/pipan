@@ -6,13 +6,10 @@
     Controls,
     MiniMap,
     Panel,
-    Position,
     MarkerType,
-    type Node,
     type Edge,
     type NodeTypes
   } from '@xyflow/svelte';
-  import dagre from 'dagre';
   import {
     GitFork,
     ArrowDownUp,
@@ -24,81 +21,29 @@
   } from 'lucide-svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import { flowStore } from '#lib/stores/flow.svelte.ts';
+  import { layoutGraph, type FlowNode, type LayoutDirection } from '#lib/flow/layout.ts';
+  import { ORCHESTRATOR_NODE_ID, summarizeToolArgs } from '#lib/flow/telemetry.ts';
   import type { FlowNodeMeta } from '#lib/types/pi.ts';
   import FlowNodeCard from './FlowNodeCard.svelte';
+  import OrchestratorNode from './nodes/OrchestratorNode.svelte';
+  import WorkerNode from './nodes/WorkerNode.svelte';
+  import ActionNode from './nodes/ActionNode.svelte';
+  import ApprovalNode from './nodes/ApprovalNode.svelte';
 
-  type PipanNode = Node<FlowNodeMeta, 'pipan'>;
+  type PipanNode = FlowNode;
 
   const nodeTypes: NodeTypes = {
-    pipan: FlowNodeCard
+    pipan: FlowNodeCard,
+    orchestrator: OrchestratorNode,
+    worker: WorkerNode,
+    action: ActionNode,
+    approval: ApprovalNode
   };
 
-  const NODE_WIDTH = 244;
-  const NODE_HEIGHT = 112;
-
-  let layoutDirection = $state<'TB' | 'LR'>('TB');
+  let layoutDirection = $state<LayoutDirection>('TB');
   let nodes = $state.raw<PipanNode[]>([]);
   let edges = $state.raw<Edge[]>([]);
-
-  function summarizeToolArgs(args?: Record<string, unknown>, argsJson?: string): string {
-    if (args && typeof args === 'object') {
-      const keys = ['command', 'path', 'pattern', 'query', 'url', 'file'];
-      for (const k of keys) {
-        if (typeof args[k] === 'string' && String(args[k]).trim()) {
-          return String(args[k]).trim();
-        }
-      }
-    }
-    if (argsJson) {
-      return argsJson.replace(/\s+/g, ' ').trim();
-    }
-    return 'Executing tool call';
-  }
-
-  function applyDagreLayout(
-    rawNodes: PipanNode[],
-    rawEdges: Edge[],
-    direction: 'TB' | 'LR'
-  ): { nodes: PipanNode[]; edges: Edge[] } {
-    const g = new dagre.graphlib.Graph();
-    g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({
-      rankdir: direction,
-      nodesep: direction === 'TB' ? 48 : 36,
-      ranksep: direction === 'TB' ? 68 : 84,
-      marginx: 32,
-      marginy: 32
-    });
-
-    for (const node of rawNodes) {
-      g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-    }
-
-    for (const edge of rawEdges) {
-      g.setEdge(edge.source, edge.target);
-    }
-
-    dagre.layout(g);
-
-    const isHorizontal = direction === 'LR';
-    const targetPosition = isHorizontal ? Position.Left : Position.Top;
-    const sourcePosition = isHorizontal ? Position.Right : Position.Bottom;
-
-    const layoutedNodes: PipanNode[] = rawNodes.map((node) => {
-      const pos = g.node(node.id);
-      return {
-        ...node,
-        targetPosition,
-        sourcePosition,
-        position: {
-          x: (pos?.x ?? 0) - NODE_WIDTH / 2,
-          y: (pos?.y ?? 0) - NODE_HEIGHT / 2
-        }
-      };
-    });
-
-    return { nodes: layoutedNodes, edges: rawEdges };
-  }
 
   function buildOrchestrationGraph(direction: 'TB' | 'LR'): {
     nodes: PipanNode[];
@@ -129,7 +74,7 @@
 
     builtNodes.push({
       id: 'session-supervisor',
-      type: 'pipan',
+      type: 'orchestrator',
       position: { x: 0, y: 0 },
       selected: chatStore.selectedNodeId === 'session-supervisor',
       data: {
@@ -153,8 +98,8 @@
         : 'idle';
 
     builtNodes.push({
-      id: 'agent-orchestrator',
-      type: 'pipan',
+      id: ORCHESTRATOR_NODE_ID,
+      type: 'orchestrator',
       position: { x: 0, y: 0 },
       selected: chatStore.selectedNodeId === 'agent-orchestrator',
       data: {
@@ -274,11 +219,12 @@
 
           builtNodes.push({
             id: toolNodeId,
-            type: 'pipan',
+            type: 'action',
             position: { x: 0, y: 0 },
             selected: chatStore.selectedNodeId === toolNodeId,
             data: {
               category: 'tool_call',
+              origin: 'pi',
               title: block.name,
               subtitle: summarizeToolArgs(block.args, block.argsJson),
               badge: block.status === 'streaming_args' ? 'args' : block.status,
@@ -355,7 +301,14 @@
       }
     }
 
-    return applyDagreLayout(builtNodes, builtEdges, direction);
+    // Worktree agent sessions and GitHub activity come from IPC telemetry (flowStore).
+    for (const node of flowStore.nodes) {
+      builtNodes.push({ ...node, selected: chatStore.selectedNodeId === node.id });
+    }
+    builtEdges.push(...flowStore.edges);
+
+    // Dagre re-ranks the whole DAG top-to-bottom whenever any node is added.
+    return layoutGraph(builtNodes, builtEdges, direction);
   }
 
   // Reactive effect to recompute DAG layout when telemetry or layout direction changes
@@ -445,7 +398,9 @@
         const meta = node.data as FlowNodeMeta | undefined;
         if (meta?.status === 'error') return '#f43f5e';
         if (meta?.status === 'running') return '#818cf8';
-        if (meta?.category === 'tool_call') return '#10b981';
+        if (meta?.category === 'worker') return '#22d3ee';
+        if (meta?.category === 'approval') return '#f59e0b';
+        if (meta?.category === 'tool_call' || meta?.category === 'action') return '#10b981';
         if (meta?.category === 'user_prompt') return '#38bdf8';
         return '#52525b';
       }}

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { AlertCircle, X } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import { flowStore } from '#lib/stores/flow.svelte.ts';
   import SessionHeader from '#lib/components/SessionHeader.svelte';
   import Sidebar from '#lib/components/Sidebar.svelte';
   import FlowCanvas from '#lib/components/FlowCanvas.svelte';
@@ -9,6 +10,7 @@
 
   onMount(() => {
     chatStore.init();
+    flowStore.init();
   });
 </script>
 
