@@ -40,13 +40,17 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
-      - name: Update package.json and Cargo.toml from release tag
+      - name: Update version files and CHANGELOG.md from release
         id: sync
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_ID: ${{ github.event.release.id }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_DATE: ${{ github.event.release.published_at || github.event.release.created_at }}
+          REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref }}
         run: |
           TAG=""
@@ -65,6 +69,7 @@ jobs:
             node -e '
               const fs = require("fs");
               const version = process.argv[1];
+              const tag = process.argv[2];
 
               for (const file of ["package.json", "src-tauri/tauri.conf.json"]) {
                 const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -89,12 +94,52 @@ jobs:
                 );
                 fs.writeFileSync(cargoLockPath, updatedCargoLock);
               }
-            ' "${VERSION}"
 
-            if ! git diff --quiet package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock; then
+              const changelogPath = "CHANGELOG.md";
+              const defaultHeader = "# Changelog\n\nAll notable changes to this project will be documented in this file.\n";
+              const existingChangelog = fs.existsSync(changelogPath)
+                ? fs.readFileSync(changelogPath, "utf8").replace(/\r\n/g, "\n")
+                : defaultHeader;
+
+              const repo = process.env.REPO || "Steven-Harris/pipan";
+              const releaseUrl = process.env.RELEASE_URL || `https://github.com/${repo}/releases/tag/${tag}`;
+              const releaseDate = (process.env.RELEASE_DATE || new Date().toISOString()).slice(0, 10);
+              const rawBody = (process.env.RELEASE_BODY || "").replace(/\r\n/g, "\n").trim();
+              const formattedBody = rawBody ? rawBody.replace(/^## /gm, "### ") : `Release ${tag}`;
+              const newSection = `## [${tag}](${releaseUrl}) - ${releaseDate}\n\n${formattedBody}\n`;
+
+              let updatedChangelog;
+              const lines = existingChangelog.split("\n");
+              const sectionStartIdx = lines.findIndex((line) =>
+                line.startsWith(`## [${tag}]`) || line.startsWith(`## ${tag}`)
+              );
+
+              if (sectionStartIdx !== -1) {
+                let sectionEndIdx = lines.findIndex(
+                  (line, idx) => idx > sectionStartIdx && line.startsWith("## ")
+                );
+                if (sectionEndIdx === -1) sectionEndIdx = lines.length;
+                const before = lines.slice(0, sectionStartIdx).join("\n").trimEnd();
+                const after = lines.slice(sectionEndIdx).join("\n").trimStart();
+                updatedChangelog = `${before}\n\n${newSection}${after ? `\n${after}` : ""}`;
+              } else {
+                const firstReleaseIdx = lines.findIndex((line) => line.startsWith("## "));
+                if (firstReleaseIdx !== -1) {
+                  const before = lines.slice(0, firstReleaseIdx).join("\n").trimEnd();
+                  const after = lines.slice(firstReleaseIdx).join("\n").trimStart();
+                  updatedChangelog = `${before}\n\n${newSection}\n${after}`;
+                } else {
+                  updatedChangelog = `${existingChangelog.trimEnd()}\n\n${newSection}`;
+                }
+              }
+
+              fs.writeFileSync(changelogPath, updatedChangelog.trimEnd() + "\n");
+            ' "${VERSION}" "${TAG}"
+
+            if ! git diff --quiet package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock CHANGELOG.md; then
               git config user.name "github-actions[bot]"
               git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-              git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+              git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock CHANGELOG.md
               git commit -m "chore(release): v${VERSION}"
               git push origin HEAD:main
               git tag -f "${TAG}" HEAD
