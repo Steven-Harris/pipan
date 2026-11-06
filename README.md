@@ -129,8 +129,10 @@ pipan/
 ├── src-tauri/
 │   ├── src/
 │   │   ├── lib.rs                    # Tauri builder & IPC command registration
+│   │   ├── github.rs                 # gh CLI commands returning JSON (PRs, checks, issues, runs)
 │   │   ├── main.rs                   # Binary entrypoint
-│   │   └── pi_rpc.rs                 # Async Pi sidecar manager (stdin/stdout JSONL + stderr)
+│   │   ├── pi_rpc.rs                 # Async Pi sidecar manager (stdin/stdout JSONL + stderr)
+│   │   └── webhook.rs                # gh webhook forward tunnel + local axum receiver
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── PLAN.md                           # Multi-phase architecture roadmap

@@ -31,9 +31,9 @@ Build a desktop GUI wrapper for the `pi` AI coding agent using Tauri. The applic
 - [x] Route Pi's telemetry events (`thought`, `tool_call`, `task_complete`) over Tauri's IPC (`app_handle.emit_all`) to the Svelte frontend.
 
 ### Phase 3: Rust Backend - GitHub CLI & Webhook Tunnel
-- [ ] Create Rust commands to execute `gh` CLI operations synchronously and return JSON payloads (e.g., `gh pr view --json`).
-- [ ] Implement an async background task in Rust that spawns `gh webhook forward` pointing to a local lightweight HTTP server (using `axum` or `warp`).
-- [ ] Configure the local HTTP server to receive GitHub webhook payloads (issue comments, PR reviews, CI status) and immediately broadcast them to the Svelte frontend via Tauri IPC.
+- [x] Create Rust commands to execute `gh` CLI operations synchronously and return JSON payloads (e.g., `gh pr view --json`).
+- [x] Implement an async background task in Rust that spawns `gh webhook forward` pointing to a local lightweight HTTP server (using `axum` or `warp`).
+- [x] Configure the local HTTP server to receive GitHub webhook payloads (issue comments, PR reviews, CI status) and immediately broadcast them to the Svelte frontend via Tauri IPC.
 
 ### Phase 4: Frontend - The Living Dashboard (Svelte Flow)
 - [ ] Create custom Svelte Flow node components for the orchestration graph: `OrchestratorNode.svelte`, `WorkerNode.svelte`, `ActionNode.svelte`, and `ApprovalNode.svelte`.
