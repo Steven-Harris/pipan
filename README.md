@@ -6,6 +6,22 @@ Instead of wrapping a pseudo-terminal, Pipan spawns `pi` as a structured JSON-RP
 
 ---
 
+## Quick Start
+
+1. **Install the `pi` CLI** and make sure it is available on your system `PATH`:
+   ```bash
+   pi --version
+   ```
+2. **Download Pipan:** Go to the [**Releases**](https://github.com/Steven-Harris/pipan/releases) tab and download the latest installer or bundle for your platform:
+   - **Windows (x64):** `.msi` or `.exe` (NSIS) installer
+   - **macOS (Apple Silicon & Intel):** `.dmg` disk image
+   - **Linux (x64):** `.deb`, `.rpm`, or `.AppImage`
+3. **Launch & Connect:** Open **Pipan** and choose a session mode in the header:
+   - Click **Start Headless** to launch an isolated scratchpad session (`<temp_dir>/pipan-headless`), or
+   - Click **Open Folder…** to bind `pi` to a local project directory.
+
+---
+
 ## Features
 
 ### Implemented
@@ -42,7 +58,9 @@ Instead of wrapping a pseudo-terminal, Pipan spawns `pi` as a structured JSON-RP
 
 ---
 
-## Prerequisites
+## Development (Build from Source)
+
+### Prerequisites
 
 1. **pi CLI** installed and accessible on your system `PATH`:
    ```bash
@@ -50,10 +68,6 @@ Instead of wrapping a pseudo-terminal, Pipan spawns `pi` as a structured JSON-RP
    ```
 2. **Node.js** and **pnpm** (`pnpm@10.x` recommended)
 3. **Rust toolchain** (`rustup`, `cargo`) and [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your OS
-
----
-
-## Getting Started
 
 ### 1. Install dependencies
 
