@@ -38,6 +38,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Update package.json and Cargo.toml from release tag
         id: sync
