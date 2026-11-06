@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "Pipan",
-        "width": 960,
-        "height": 680,
-        "minWidth": 480,
-        "minHeight": 420
+        "width": 1200,
+        "height": 800,
+        "minWidth": 640,
+        "minHeight": 480
       }
     ],
     "security": {

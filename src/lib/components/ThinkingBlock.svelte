@@ -29,7 +29,7 @@
         {block.isComplete ? 'Reasoning' : 'Thinking'}
       </span>
       {#if !isOpen}
-        <span class="truncate text-zinc-500 italic">{previewText}</span>
+        <span class="truncate text-zinc-400 italic">{previewText}</span>
       {/if}
     </div>
 
@@ -38,15 +38,15 @@
         <span class="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping"></span>
       {/if}
       {#if isOpen}
-        <ChevronDown class="h-3.5 w-3.5 text-zinc-500" />
+        <ChevronDown class="h-3.5 w-3.5 text-zinc-400" />
       {:else}
-        <ChevronRight class="h-3.5 w-3.5 text-zinc-500" />
+        <ChevronRight class="h-3.5 w-3.5 text-zinc-400" />
       {/if}
     </div>
   </button>
 
   {#if isOpen}
-    <div class="border-t border-zinc-800/70 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400 whitespace-pre-wrap break-words max-h-80 overflow-y-auto">
+    <div class="border-t border-zinc-800/70 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-300 whitespace-pre-wrap break-words max-h-80 overflow-y-auto">
       {block.thinking || '…'}
     </div>
   {/if}

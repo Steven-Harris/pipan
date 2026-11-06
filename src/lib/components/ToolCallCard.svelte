@@ -77,14 +77,14 @@
 
     <div class="flex shrink-0 items-center gap-2">
       {#if durationText}
-        <span class="rounded bg-zinc-800/80 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+        <span class="rounded bg-zinc-800/80 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300 tabular-nums">
           {durationText}
         </span>
       {/if}
       {#if expanded}
-        <ChevronDown class="h-3.5 w-3.5 text-zinc-500" />
+        <ChevronDown class="h-3.5 w-3.5 text-zinc-400" />
       {:else}
-        <ChevronRight class="h-3.5 w-3.5 text-zinc-500" />
+        <ChevronRight class="h-3.5 w-3.5 text-zinc-400" />
       {/if}
     </div>
   </button>
@@ -93,16 +93,16 @@
     <div class="border-t border-zinc-800/80 bg-zinc-950/60 p-3 space-y-2.5 font-mono text-[11px]">
       {#if block.argsJson}
         <div>
-          <div class="mb-1 text-[10px] font-sans uppercase tracking-wider text-zinc-500">
+          <div class="mb-1 text-[11px] font-sans font-medium text-zinc-300">
             Arguments
           </div>
-          <pre class="max-h-48 overflow-auto rounded bg-zinc-900 p-2 text-zinc-300 whitespace-pre-wrap break-words">{block.argsJson}</pre>
+          <pre class="max-h-48 overflow-auto rounded bg-zinc-900 p-2 text-zinc-200 whitespace-pre-wrap break-words">{block.argsJson}</pre>
         </div>
       {/if}
 
       {#if displayOutput}
         <div>
-          <div class="mb-1 flex items-center justify-between text-[10px] font-sans uppercase tracking-wider text-zinc-500">
+          <div class="mb-1 flex items-center justify-between text-[11px] font-sans font-medium text-zinc-300">
             <span>{block.status === 'running' ? 'Live Output' : 'Output'}</span>
             {#if block.isError}
               <span class="text-rose-400 font-semibold">Error</span>
@@ -110,11 +110,11 @@
           </div>
           <pre
             class="max-h-72 overflow-auto rounded bg-zinc-900 p-2 whitespace-pre-wrap break-words {block.isError
-              ? 'text-rose-300'
-              : 'text-zinc-300'}">{displayOutput}</pre>
+              ? 'text-rose-200'
+              : 'text-zinc-200'}">{displayOutput}</pre>
         </div>
       {:else if block.status === 'running' || block.status === 'streaming_args'}
-        <div class="text-zinc-500 italic font-sans">Executing tool…</div>
+        <div class="text-zinc-300 italic font-sans">Executing tool…</div>
       {/if}
     </div>
   {/if}

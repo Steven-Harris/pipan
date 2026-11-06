@@ -72,33 +72,33 @@
     {#if chatStore.sessionStatus.state === 'disconnected' && chatStore.messages.length === 0}
       <!-- Disconnected Onboarding State -->
       <div class="flex h-full items-center justify-center">
-        <div class="max-w-md w-full rounded-2xl border border-zinc-800/90 bg-zinc-900/50 p-6 text-center shadow-xl">
-          <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-500/30 bg-indigo-500/15 text-indigo-400">
-            <MessageSquareCode class="h-6 w-6" />
+        <div class="max-w-lg w-full rounded-2xl border border-zinc-800/90 bg-zinc-900/50 p-5 text-center shadow-xl">
+          <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/15 text-indigo-300">
+            <MessageSquareCode class="h-5 w-5" />
           </div>
-          <h2 class="text-base font-semibold text-zinc-100">
-            Direct Pi RPC Chat Window
+          <h2 class="text-sm font-semibold text-zinc-100">
+            Direct Pi RPC Chat &amp; Steering
           </h2>
-          <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">
-            Launch a local <code class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-zinc-300">pi --mode rpc --no-session</code> process either isolated in a temporary workspace or bound to a project directory.
+          <p class="mt-1 text-xs leading-relaxed text-zinc-300">
+            Launch a local <code class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-zinc-200">pi --mode rpc --no-session</code> sidecar either in an isolated temporary workspace or bound to a project directory.
           </p>
 
-          <div class="mt-6 flex flex-col gap-2.5 sm:flex-row sm:justify-center">
+          <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <button
               type="button"
               onclick={() => chatStore.startHeadless()}
-              class="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow hover:bg-indigo-500 transition cursor-pointer"
+              class="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow hover:bg-indigo-500 transition cursor-pointer"
             >
-              <Terminal class="h-4 w-4" />
+              <Terminal class="h-3.5 w-3.5" />
               <span>Start Headless Chat</span>
             </button>
 
             <button
               type="button"
               onclick={handleSelectFolder}
-              class="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/90 px-4 py-2.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-700/80 transition cursor-pointer"
+              class="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/90 px-3.5 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700/80 transition cursor-pointer"
             >
-              <FolderOpen class="h-4 w-4 text-sky-400" />
+              <FolderOpen class="h-3.5 w-3.5 text-sky-400" />
               <span>Select Workspace Folder…</span>
             </button>
           </div>
