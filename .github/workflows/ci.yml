@@ -87,6 +87,12 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Ensure frontendDist directory exists for Tauri context macro
+        shell: bash
+        run: |
+          mkdir -p build
+          test -f build/index.html || echo "<!doctype html><html><body></body></html>" > build/index.html
+
       - name: Cargo fmt check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
