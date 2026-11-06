@@ -96,6 +96,6 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'pipan v__VERSION__'
           releaseBody: 'See the release assets below to download and install for your platform.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || true }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || github.event_name != 'workflow_dispatch' }}
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           args: ${{ matrix.args }}

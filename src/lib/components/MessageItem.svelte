@@ -18,7 +18,7 @@
     raw: string
   ): Array<{ type: 'prose' | 'code'; lang?: string; content: string }> {
     const segments: Array<{ type: 'prose' | 'code'; lang?: string; content: string }> = [];
-    const fenceRegex = /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g;
+    const fenceRegex = /```([a-zA-Z0-9_-]*)\r?\n?([\s\S]*?)```/g;
     let lastIdx = 0;
     let match: RegExpExecArray | null;
 

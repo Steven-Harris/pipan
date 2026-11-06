@@ -59,10 +59,11 @@
     }
     const cwd = chatStore.sessionStatus.cwd;
     if (!cwd) return 'Directory';
-    const normalized = cwd.replace(/\\/g, '/');
-    const parts = normalized.split('/').filter(Boolean);
-    if (parts.length <= 2) return cwd;
-    return `…/${parts.slice(-2).join('/')}`;
+    const cleaned = cwd.replace(/^\\\\\?\\/, '');
+    const sep = cleaned.includes('\\') ? '\\' : '/';
+    const parts = cleaned.split(/[\\/]+/).filter(Boolean);
+    if (parts.length <= 2) return cleaned;
+    return `…${sep}${parts.slice(-2).join(sep)}`;
   });
 
   async function handleStartHeadless() {

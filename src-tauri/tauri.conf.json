@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "pipan",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Pipan",
+        "width": 960,
+        "height": 680,
+        "minWidth": 480,
+        "minHeight": 420
       }
     ],
     "security": {
