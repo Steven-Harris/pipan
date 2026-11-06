@@ -394,7 +394,7 @@ impl PiRpcManager {
     }
 }
 
-fn trim_line_endings(buf: &[u8]) -> &[u8] {
+pub(crate) fn trim_line_endings(buf: &[u8]) -> &[u8] {
     let mut end = buf.len();
     if end > 0 && buf[end - 1] == b'\n' {
         end -= 1;
@@ -405,7 +405,7 @@ fn trim_line_endings(buf: &[u8]) -> &[u8] {
     &buf[..end]
 }
 
-async fn terminate_process_tree(child: &mut Child, pid: Option<u32>) {
+pub(crate) async fn terminate_process_tree(child: &mut Child, pid: Option<u32>) {
     #[cfg(target_os = "windows")]
     {
         if let Some(pid) = pid {
@@ -443,7 +443,7 @@ async fn terminate_process_tree(child: &mut Child, pid: Option<u32>) {
     }
 }
 
-fn build_pi_command(working_dir: &Path) -> Command {
+pub(crate) fn build_pi_command(working_dir: &Path) -> Command {
     let resolved_path = get_augmented_path();
 
     #[cfg(target_os = "windows")]
@@ -524,7 +524,7 @@ fn is_executable_file(path: &Path) -> bool {
     }
 }
 
-fn get_augmented_path() -> OsString {
+pub(crate) fn get_augmented_path() -> OsString {
     static AUGMENTED_PATH: OnceLock<OsString> = OnceLock::new();
     AUGMENTED_PATH.get_or_init(compute_augmented_path).clone()
 }
