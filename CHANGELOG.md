@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.0](https://github.com/Steven-Harris/pipan/releases/tag/v0.1.0) - 2026-11-06
+
+### What's Changed
+* ci: limit GITHUB_TOKEN permissions to contents: read by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/15
+* feat(phase-1): implement UI shell with Svelte Flow canvas, sidebar, and chat drawer by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/16
+* feat(phase-2): git worktree agent sessions with pi RPC event routing by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/17
+* feat(phase-3): gh CLI commands and webhook forward tunnel by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/18
+* feat(phase-4): living dashboard with custom Svelte Flow nodes and telemetry mapping by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/19
+* feat(phase-5): interactive steering and approval gate for destructive commands by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/20
+* docs: update PLAN.md with v0.2 modular workspace implementation plan by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/21
+
+
+**Full Changelog**: https://github.com/Steven-Harris/pipan/compare/v0.0.2...v0.1.0
+
 ## [v0.0.2](https://github.com/Steven-Harris/pipan/releases/tag/v0.0.2) - 2026-11-06
 
 ### What's Changed
