@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published, prereleased]
   workflow_dispatch:
     inputs:
       draft:
@@ -18,7 +17,7 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -86,6 +85,31 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Sync version from release tag
+        id: release_meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            echo "release_id=${{ github.event.release.id }}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "${TAG:-}" ]; then
+            VERSION="${TAG#v}"
+            node -e '
+              const fs = require("fs");
+              for (const file of ["package.json", "src-tauri/tauri.conf.json"]) {
+                const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+                pkg.version = process.argv[1];
+                fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+              }
+            ' "$VERSION"
+          fi
+
       - name: Build Tauri app and publish release
         uses: tauri-apps/tauri-action@v1
         env:
@@ -93,9 +117,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
+          releaseId: ${{ steps.release_meta.outputs.release_id }}
+          tagName: ${{ steps.release_meta.outputs.tag_name || 'v__VERSION__' }}
           releaseName: 'pipan v__VERSION__'
           releaseBody: 'See the release assets below to download and install for your platform.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || github.event_name != 'workflow_dispatch' }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           args: ${{ matrix.args }}
