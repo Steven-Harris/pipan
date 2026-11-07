@@ -3,11 +3,14 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   ChatMessage,
   ContentBlock,
+  PiFullModelInfo,
+  PiModelCostInfo,
   PiModelInfo,
   PiRawMessage,
   PiRpcCommand,
   PiRpcEvent,
   PiSessionStatus,
+  PiSkillItem,
   PiStderrPayload,
   SavedSession,
   SaveSessionMetadataInput,
@@ -117,6 +120,35 @@ class ChatStore {
   activeSessionName = $state<string>('Untitled Session');
   activeSessionFilePath = $state<string | null>(null);
 
+  // Models, Thinking Levels & Skills (Phase 4)
+  availableModels = $state<PiFullModelInfo[]>([]);
+  configuredModels = $state<PiFullModelInfo[]>([]);
+  availableThinkingLevels = $state<string[]>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+  selectedThinkingLevel = $state<string>('medium');
+  installedSkills = $state<PiSkillItem[]>([]);
+  rpcCommands = $state<PiSkillItem[]>([]);
+
+  readonly availableSkills = $derived.by((): PiSkillItem[] => {
+    const map = new Map<string, PiSkillItem>();
+    for (const s of this.installedSkills) {
+      map.set(`${s.source}:${s.name.toLowerCase()}`, s);
+    }
+    for (const c of this.rpcCommands) {
+      const key = `${c.source}:${c.name.toLowerCase()}`;
+      const existing = map.get(key);
+      if (existing) {
+        map.set(key, {
+          ...existing,
+          description: c.description || existing.description,
+          path: c.path ?? existing.path
+        });
+      } else {
+        map.set(key, c);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  });
+
   private initialized = false;
   private unlisteners: UnlistenFn[] = [];
   // Maps `contentIndex` of the currently streaming assistant message to its index in `msg.blocks`
@@ -171,11 +203,18 @@ class ChatStore {
 
     this.unlisteners.push(unlistenEvent, unlistenStatus, unlistenStderr, unlistenAgentStatus);
 
-    await this.refreshSavedSessions();
+    await Promise.all([
+      this.refreshSavedSessions(),
+      this.refreshConfiguredModels(),
+      this.refreshInstalledSkills(null)
+    ]);
 
     try {
       const status = await invoke<PiSessionStatus>('get_pi_status');
       this.sessionStatus = status;
+      if (status.cwd) {
+        void this.refreshInstalledSkills(status.cwd);
+      }
       if (status.state === 'running') {
         this.recordSessionStart(status, status.sessionId ?? undefined, status.name ?? undefined);
         await this.requestState();
@@ -350,13 +389,147 @@ class ChatStore {
     }
   }
 
+  private getLaunchModelArg(): string | null {
+    if (!this.modelInfo?.id) return null;
+    return this.modelInfo.provider
+      ? `${this.modelInfo.provider}/${this.modelInfo.id}`
+      : this.modelInfo.id;
+  }
+
+  async refreshConfiguredModels(): Promise<void> {
+    try {
+      const models = await invoke<PiFullModelInfo[]>('list_configured_models');
+      if (Array.isArray(models) && models.length > 0) {
+        this.configuredModels = models;
+        if (this.availableModels.length === 0) {
+          this.availableModels = models;
+        }
+        if (!this.modelInfo?.id) {
+          const def = models.find((m) => m.isDefault) ?? models[0];
+          if (def) {
+            const thinking = def.defaultThinkingLevel ?? this.selectedThinkingLevel ?? 'medium';
+            this.selectedThinkingLevel = thinking;
+            this.modelInfo = {
+              id: def.id,
+              name: def.name ?? def.id,
+              provider: def.provider,
+              thinkingLevel: thinking
+            };
+          }
+        }
+      }
+    } catch {
+      // Fallback when running in browser dev mode without Tauri backend
+    }
+  }
+
+  async refreshInstalledSkills(cwd?: string | null): Promise<void> {
+    try {
+      const targetCwd = cwd !== undefined ? cwd : this.sessionStatus.cwd;
+      const skills = await invoke<PiSkillItem[]>('list_installed_skills', {
+        cwd: targetCwd ?? null
+      });
+      if (Array.isArray(skills)) {
+        this.installedSkills = skills;
+      }
+    } catch {
+      // Fallback when running in browser dev mode without Tauri backend
+    }
+  }
+
+  async requestAvailableModels(): Promise<void> {
+    if (this.sessionStatus.state !== 'running') return;
+    try {
+      await this.sendCommand({ id: makeId(), type: 'get_available_models' });
+    } catch {
+      // Non-fatal; configuredModels fallback remains populated
+    }
+  }
+
+  async requestAvailableThinkingLevels(): Promise<void> {
+    if (this.sessionStatus.state !== 'running') return;
+    try {
+      await this.sendCommand({ id: makeId(), type: 'get_available_thinking_levels' });
+    } catch {
+      // Non-fatal; default thinking levels remain populated
+    }
+  }
+
+  async requestCommands(): Promise<void> {
+    if (this.sessionStatus.state !== 'running') return;
+    try {
+      await this.sendCommand({ id: makeId(), type: 'get_commands' });
+    } catch {
+      // Non-fatal; installedSkills fallback remains populated
+    }
+  }
+
+  async selectModel(provider: string, modelId: string): Promise<void> {
+    const matched = this.availableModels.find(
+      (m) =>
+        m.provider.toLowerCase() === provider.toLowerCase() &&
+        m.id.toLowerCase() === modelId.toLowerCase()
+    );
+    const nextThinking =
+      matched?.reasoning === false
+        ? 'off'
+        : this.modelInfo?.thinkingLevel && this.modelInfo.thinkingLevel !== 'off'
+          ? this.modelInfo.thinkingLevel
+          : this.selectedThinkingLevel || 'medium';
+
+    this.modelInfo = {
+      id: modelId,
+      name: matched?.name ?? modelId,
+      provider,
+      thinkingLevel: nextThinking
+    };
+
+    if (this.sessionStatus.state === 'running') {
+      try {
+        await this.sendCommand({
+          id: makeId(),
+          type: 'set_model',
+          provider,
+          modelId
+        });
+        await this.requestAvailableThinkingLevels();
+        void this.persistActiveSessionMetadata({ provider, modelId });
+      } catch {
+        // Handled in sendCommand
+      }
+    }
+  }
+
+  async selectThinkingLevel(level: string): Promise<void> {
+    this.selectedThinkingLevel = level;
+    this.modelInfo = {
+      ...(this.modelInfo ?? {}),
+      thinkingLevel: level
+    };
+    if (this.sessionStatus.state === 'running') {
+      try {
+        await this.sendCommand({
+          id: makeId(),
+          type: 'set_thinking_level',
+          level
+        });
+      } catch {
+        // Handled in sendCommand
+      }
+    }
+  }
+
   async startHeadless(ephemeral = false): Promise<void> {
+    const preservedModel = this.modelInfo;
+    const launchModel = this.getLaunchModelArg();
+    const launchThinking = this.modelInfo?.thinkingLevel ?? this.selectedThinkingLevel;
+
     this.lastError = null;
     this.stderrLines = [];
     this.messages = [];
     this.steeringQueue = [];
     this.followUpQueue = [];
-    this.modelInfo = null;
+    this.modelInfo = preservedModel;
     this.selectedNodeId = null;
     this.activeBlockIndexMap.clear();
 
@@ -368,10 +541,13 @@ class ChatStore {
         cwd: null,
         sessionId: nextId,
         name: label,
-        ephemeral
+        ephemeral,
+        model: launchModel,
+        thinkingLevel: launchThinking
       });
       this.sessionStatus = status;
       this.recordSessionStart(status, status.sessionId ?? nextId, status.name ?? label);
+      void this.refreshInstalledSkills(null);
       await this.refreshSavedSessions();
       await this.requestState();
     } catch (err) {
@@ -380,12 +556,16 @@ class ChatStore {
   }
 
   async startInDirectory(cwd: string, ephemeral = false): Promise<void> {
+    const preservedModel = this.modelInfo;
+    const launchModel = this.getLaunchModelArg();
+    const launchThinking = this.modelInfo?.thinkingLevel ?? this.selectedThinkingLevel;
+
     this.lastError = null;
     this.stderrLines = [];
     this.messages = [];
     this.steeringQueue = [];
     this.followUpQueue = [];
-    this.modelInfo = null;
+    this.modelInfo = preservedModel;
     this.selectedNodeId = null;
     this.activeBlockIndexMap.clear();
 
@@ -397,10 +577,13 @@ class ChatStore {
         cwd,
         sessionId: nextId,
         name: label,
-        ephemeral
+        ephemeral,
+        model: launchModel,
+        thinkingLevel: launchThinking
       });
       this.sessionStatus = status;
       this.recordSessionStart(status, status.sessionId ?? nextId, status.name ?? label);
+      void this.refreshInstalledSkills(cwd);
       await this.refreshSavedSessions();
       await this.requestState();
     } catch (err) {
@@ -416,6 +599,15 @@ class ChatStore {
     this.followUpQueue = [];
     this.selectedNodeId = null;
     this.activeBlockIndexMap.clear();
+
+    if (session.modelId) {
+      this.modelInfo = {
+        id: session.modelId,
+        name: session.modelId,
+        provider: session.provider ?? this.modelInfo?.provider,
+        thinkingLevel: this.modelInfo?.thinkingLevel ?? this.selectedThinkingLevel
+      };
+    }
 
     const sameWorkspace =
       this.sessionStatus.state === 'running' &&
@@ -442,15 +634,22 @@ class ChatStore {
       }
 
       const targetCwd = session.mode === 'headless' ? null : session.cwd;
+      const launchModel =
+        session.modelId && session.provider
+          ? `${session.provider}/${session.modelId}`
+          : (session.modelId ?? this.getLaunchModelArg());
       const status = await invoke<PiSessionStatus>('start_pi_session', {
         cwd: targetCwd,
         sessionId: session.id,
         sessionFilePath: session.sessionFilePath,
         name: session.name,
-        ephemeral: false
+        ephemeral: false,
+        model: launchModel,
+        thinkingLevel: this.modelInfo?.thinkingLevel ?? this.selectedThinkingLevel
       });
       this.sessionStatus = status;
       this.recordSessionStart(status, session.id, session.name);
+      void this.refreshInstalledSkills(targetCwd);
       await this.refreshSavedSessions();
       await this.requestState();
       await this.requestMessages();
@@ -599,6 +798,9 @@ class ChatStore {
     if (this.sessionStatus.state !== 'running') return;
     try {
       await this.sendCommand({ id: makeId(), type: 'get_state' });
+      await this.requestAvailableModels();
+      await this.requestAvailableThinkingLevels();
+      await this.requestCommands();
     } catch {
       // Handled in sendCommand
     }
@@ -613,15 +815,21 @@ class ChatStore {
     }
   }
 
-  async sendPrompt(text: string, streamingBehavior?: StreamingBehavior): Promise<void> {
+  async sendPrompt(
+    text: string,
+    streamingBehavior?: StreamingBehavior,
+    images?: Array<{ type: 'image'; data: string; mimeType: string }>
+  ): Promise<void> {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    const hasImages = Array.isArray(images) && images.length > 0;
+    if (!trimmed && !hasImages) return;
     if (this.sessionStatus.state !== 'running') {
       this.lastError = 'Start a Headless or Folder session before sending a message.';
       return;
     }
 
     this.lastError = null;
+    const effectiveMessage = trimmed || '(Attached image)';
 
     if (!this.isAgentRunning) {
       // Optimistically show user message; reconciled when `message_start` (role: "user") arrives
@@ -629,22 +837,24 @@ class ChatStore {
         id: makeId(),
         role: 'user',
         timestamp: Date.now(),
-        blocks: [{ type: 'text', text: trimmed, isComplete: true }],
+        blocks: [{ type: 'text', text: effectiveMessage, isComplete: true }],
         isOptimistic: true
       });
 
       await this.sendCommand({
         id: makeId(),
         type: 'prompt',
-        message: trimmed
+        message: effectiveMessage,
+        ...(hasImages ? { images } : {})
       });
     } else {
       const behavior: StreamingBehavior = streamingBehavior ?? 'steer';
       await this.sendCommand({
         id: makeId(),
         type: 'prompt',
-        message: trimmed,
-        streamingBehavior: behavior
+        message: effectiveMessage,
+        streamingBehavior: behavior,
+        ...(hasImages ? { images } : {})
       });
     }
   }
@@ -1191,6 +1401,13 @@ class ChatStore {
 
   private handleResponseEvent(event: PiRpcEvent): void {
     if (event.success === false) {
+      if (
+        event.command === 'get_available_models' ||
+        event.command === 'get_available_thinking_levels' ||
+        event.command === 'get_commands'
+      ) {
+        return;
+      }
       this.lastError = event.error ?? `Pi RPC command '${event.command ?? 'unknown'}' failed`;
       return;
     }
@@ -1198,12 +1415,32 @@ class ChatStore {
     if (event.command === 'get_state' && event.data) {
       const data = event.data;
       const rawModel = data.model as Record<string, unknown> | undefined;
-      this.modelInfo = {
-        id: typeof rawModel?.id === 'string' ? rawModel.id : undefined,
-        name: typeof rawModel?.name === 'string' ? rawModel.name : undefined,
-        provider: typeof rawModel?.provider === 'string' ? rawModel.provider : undefined,
-        thinkingLevel: typeof data.thinkingLevel === 'string' ? data.thinkingLevel : undefined
-      };
+      const nextId =
+        typeof rawModel?.id === 'string' && rawModel.id ? rawModel.id : this.modelInfo?.id;
+      const nextName =
+        typeof rawModel?.name === 'string' && rawModel.name
+          ? rawModel.name
+          : (this.modelInfo?.name ?? nextId);
+      const nextProvider =
+        typeof rawModel?.provider === 'string' && rawModel.provider
+          ? rawModel.provider
+          : this.modelInfo?.provider;
+      const nextThinking =
+        typeof data.thinkingLevel === 'string' && data.thinkingLevel
+          ? data.thinkingLevel
+          : (this.modelInfo?.thinkingLevel ?? this.selectedThinkingLevel);
+
+      if (nextId) {
+        this.modelInfo = {
+          id: nextId,
+          name: nextName,
+          provider: nextProvider,
+          thinkingLevel: nextThinking
+        };
+      }
+      if (typeof data.thinkingLevel === 'string' && data.thinkingLevel) {
+        this.selectedThinkingLevel = data.thinkingLevel;
+      }
       if (typeof data.isStreaming === 'boolean') {
         this.isAgentRunning = data.isStreaming;
       }
@@ -1217,6 +1454,142 @@ class ChatStore {
         this.activeSessionName = data.sessionName.trim();
       }
       void this.persistActiveSessionMetadata();
+      return;
+    }
+
+    if (event.command === 'get_available_models' && event.data) {
+      const rawModels = Array.isArray(event.data.models)
+        ? event.data.models
+        : Array.isArray(event.data)
+          ? event.data
+          : [];
+      const parsed: PiFullModelInfo[] = [];
+      for (const item of rawModels) {
+        if (!item || typeof item !== 'object') continue;
+        const rec = item as Record<string, unknown>;
+        const id =
+          typeof rec.id === 'string'
+            ? rec.id
+            : typeof rec.modelId === 'string'
+              ? rec.modelId
+              : '';
+        if (!id) continue;
+        const provider = typeof rec.provider === 'string' && rec.provider ? rec.provider : 'custom';
+        const name = typeof rec.name === 'string' && rec.name ? rec.name : id;
+        const contextWindow =
+          typeof rec.contextWindow === 'number' ? rec.contextWindow : undefined;
+        const maxTokens = typeof rec.maxTokens === 'number' ? rec.maxTokens : undefined;
+        const reasoning = Boolean(rec.reasoning ?? rec.thinking);
+        const inputArr = Array.isArray(rec.input)
+          ? rec.input.filter((x): x is string => typeof x === 'string')
+          : ['text'];
+        const supportsImages =
+          Boolean(rec.supportsImages ?? rec.vision) || inputArr.includes('image');
+        const rawCost =
+          rec.cost && typeof rec.cost === 'object'
+            ? (rec.cost as Record<string, unknown>)
+            : undefined;
+        const cost: PiModelCostInfo | undefined = rawCost
+          ? {
+              input: typeof rawCost.input === 'number' ? rawCost.input : undefined,
+              output: typeof rawCost.output === 'number' ? rawCost.output : undefined,
+              cacheRead: typeof rawCost.cacheRead === 'number' ? rawCost.cacheRead : undefined,
+              cacheWrite: typeof rawCost.cacheWrite === 'number' ? rawCost.cacheWrite : undefined
+            }
+          : undefined;
+        parsed.push({
+          id,
+          name,
+          provider,
+          contextWindow,
+          maxTokens,
+          reasoning,
+          supportsImages,
+          input: inputArr,
+          cost
+        });
+      }
+      if (parsed.length > 0) {
+        this.availableModels = parsed;
+      }
+      return;
+    }
+
+    if (event.command === 'get_available_thinking_levels' && event.data) {
+      const rawLevels = Array.isArray(event.data.levels)
+        ? event.data.levels
+        : Array.isArray(event.data.thinkingLevels)
+          ? event.data.thinkingLevels
+          : Array.isArray(event.data)
+            ? event.data
+            : [];
+      const levels = rawLevels.filter((x): x is string => typeof x === 'string' && x.length > 0);
+      if (levels.length > 0) {
+        this.availableThinkingLevels = levels.includes('off') ? levels : ['off', ...levels];
+      }
+      return;
+    }
+
+    if (event.command === 'set_model' && event.data) {
+      const rawModel = (event.data.model ?? event.data) as Record<string, unknown>;
+      if (typeof rawModel?.id === 'string') {
+        this.modelInfo = {
+          id: rawModel.id,
+          name: typeof rawModel.name === 'string' ? rawModel.name : rawModel.id,
+          provider:
+            typeof rawModel.provider === 'string' ? rawModel.provider : this.modelInfo?.provider,
+          thinkingLevel:
+            typeof event.data.thinkingLevel === 'string'
+              ? event.data.thinkingLevel
+              : this.modelInfo?.thinkingLevel
+        };
+      }
+      return;
+    }
+
+    if (event.command === 'set_thinking_level' && event.data) {
+      const lvl =
+        typeof event.data.level === 'string'
+          ? event.data.level
+          : typeof event.data.thinkingLevel === 'string'
+            ? event.data.thinkingLevel
+            : undefined;
+      if (lvl) {
+        this.selectedThinkingLevel = lvl;
+        if (this.modelInfo) {
+          this.modelInfo.thinkingLevel = lvl;
+        }
+      }
+      return;
+    }
+
+    if (event.command === 'get_commands' && event.data) {
+      const rawCommands = Array.isArray(event.data.commands)
+        ? event.data.commands
+        : Array.isArray(event.data)
+          ? event.data
+          : [];
+      const parsed: PiSkillItem[] = [];
+      for (const item of rawCommands) {
+        if (!item || typeof item !== 'object') continue;
+        const rec = item as Record<string, unknown>;
+        const rawName = typeof rec.name === 'string' ? rec.name.trim() : '';
+        if (!rawName) continue;
+        const source =
+          typeof rec.source === 'string' && rec.source ? rec.source : 'skill';
+        const cleanName =
+          source === 'skill' && rawName.startsWith('skill:')
+            ? rawName.slice('skill:'.length)
+            : rawName.replace(/^\/+/, '');
+        parsed.push({
+          name: cleanName,
+          description: typeof rec.description === 'string' ? rec.description : '',
+          source,
+          path: typeof rec.path === 'string' ? rec.path : undefined,
+          scope: typeof rec.location === 'string' ? rec.location : undefined
+        });
+      }
+      this.rpcCommands = parsed;
       return;
     }
 

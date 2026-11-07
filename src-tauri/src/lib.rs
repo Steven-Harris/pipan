@@ -1,8 +1,11 @@
 pub mod agent;
 pub mod approval;
 pub mod db;
+pub mod files;
 pub mod github;
+pub mod models;
 pub mod pi_rpc;
+pub mod skills;
 pub mod storage;
 pub mod webhook;
 pub mod worktree;
@@ -16,9 +19,12 @@ use db::{
     Database, clear_node_positions, get_graph_direction, load_node_positions, save_node_positions,
     set_graph_direction,
 };
+use files::read_file_attachment;
 use github::{
     gh_issue_list, gh_json, gh_pr_checks, gh_pr_list, gh_pr_view, gh_run_list, gh_status,
 };
+use models::list_configured_models;
+use skills::list_installed_skills;
 use storage::{
     archive_session, delete_session, list_saved_sessions, rename_session, save_session_metadata,
 };
@@ -90,7 +96,10 @@ pub fn run() {
             save_session_metadata,
             rename_session,
             archive_session,
-            delete_session
+            delete_session,
+            list_configured_models,
+            list_installed_skills,
+            read_file_attachment
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

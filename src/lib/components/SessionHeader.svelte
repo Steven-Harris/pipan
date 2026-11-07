@@ -5,8 +5,6 @@
     Terminal,
     Plus,
     PowerOff,
-    Cpu,
-    Sparkles,
     Loader2,
     PanelLeft,
     Workflow,
@@ -20,6 +18,7 @@
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { PANELS } from '#lib/workspace/panels.ts';
+  import ModelSelector from './ModelSelector.svelte';
 
   let isPickingFolder = $state(false);
   let isEditingName = $state(false);
@@ -249,24 +248,10 @@
       </div>
     {/if}
 
-    <!-- Model & Thinking Level Badge -->
-    {#if chatStore.sessionStatus.state === 'running' && chatStore.modelInfo?.id}
-      <div
-        class="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-zinc-800/90 bg-zinc-900/60 px-2.5 py-1 text-xs text-zinc-400"
-        title={chatStore.modelInfo.provider
-          ? `${chatStore.modelInfo.provider}/${chatStore.modelInfo.id}`
-          : chatStore.modelInfo.id}
-      >
-        <Cpu class="h-3.5 w-3.5 text-indigo-400" />
-        <span class="truncate max-w-[180px] text-zinc-300">{chatStore.modelInfo.id}</span>
-        {#if chatStore.modelInfo.thinkingLevel && chatStore.modelInfo.thinkingLevel !== 'off'}
-          <span class="inline-flex items-center gap-0.5 rounded bg-indigo-500/15 px-1.5 py-0.2 text-[10px] font-medium text-indigo-300">
-            <Sparkles class="h-2.5 w-2.5" />
-            {chatStore.modelInfo.thinkingLevel}
-          </span>
-        {/if}
-      </div>
-    {/if}
+    <!-- Interactive Model & Thinking Level Selector -->
+    <div class="hidden sm:inline-flex">
+      <ModelSelector placement="down" />
+    </div>
   </div>
 
   <!-- Right: Panel Toggles + Session Actions -->
