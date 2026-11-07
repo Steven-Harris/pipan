@@ -173,6 +173,15 @@ export type PiRpcCommand =
     }
   | {
       id?: string;
+      type: 'bash';
+      command: string;
+    }
+  | {
+      id?: string;
+      type: 'abort_bash';
+    }
+  | {
+      id?: string;
       type: string;
       [key: string]: unknown;
     };
@@ -475,4 +484,61 @@ export interface FlowNodeMeta {
   /** Present on approval nodes. */
   approval?: FlowApprovalRequest;
 }
+
+// ============================================================================
+// Phase 6: Session Terminal & Workspace File Explorer
+// ============================================================================
+
+export interface TerminalSessionInfo {
+  sessionId: string;
+  cwd: string;
+  shell: string;
+  pid: number | null;
+  cols: number;
+  rows: number;
+  running: boolean;
+}
+
+export interface TerminalOutputPayload {
+  sessionId: string;
+  stream: 'stdout' | 'stderr' | 'system' | string;
+  data: string;
+  timestamp: number;
+}
+
+export interface TerminalExitPayload {
+  sessionId: string;
+  exitCode: number | null;
+  success: boolean;
+  timestamp: number;
+}
+
+export type GitFileStatusCode = 'M' | 'A' | 'D' | 'R' | '?' | 'U' | string;
+
+export interface WorkspaceFileEntry {
+  name: string;
+  path: string;
+  relativePath: string;
+  kind: 'directory' | 'file' | 'symlink' | string;
+  isDir: boolean;
+  isHidden: boolean;
+  sizeBytes: number;
+  extension?: string;
+  modifiedAt?: number;
+  gitStatus?: GitFileStatusCode;
+}
+
+export interface WorkspaceFilePreview {
+  path: string;
+  relativePath: string;
+  name: string;
+  extension?: string;
+  sizeBytes: number;
+  isBinary: boolean;
+  truncated: boolean;
+  content?: string;
+  diff?: string;
+  gitStatus?: GitFileStatusCode;
+}
+
 

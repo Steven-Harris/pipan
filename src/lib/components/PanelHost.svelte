@@ -4,8 +4,10 @@
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { PANEL_BY_ID } from '#lib/workspace/panels.ts';
   import FlowCanvas from './FlowCanvas.svelte';
+  import FileExplorerPanel from './FileExplorerPanel.svelte';
   import PanelPlaceholder from './PanelPlaceholder.svelte';
   import PullRequestsPanel from './PullRequestsPanel.svelte';
+  import TerminalPanel from './TerminalPanel.svelte';
 
   function onTabKeydown(e: KeyboardEvent) {
     const ids = workspaceStore.openPanels;
@@ -77,6 +79,10 @@
         <SvelteFlowProvider>
           <FlowCanvas />
         </SvelteFlowProvider>
+      {:else if id === 'terminal'}
+        <TerminalPanel />
+      {:else if id === 'files'}
+        <FileExplorerPanel />
       {:else if id === 'prs'}
         <PullRequestsPanel />
       {:else}
