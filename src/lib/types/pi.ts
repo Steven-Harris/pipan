@@ -4,6 +4,7 @@
 
 export type PiConnectionState = 'disconnected' | 'starting' | 'running' | 'error';
 export type PiSessionMode = 'headless' | 'directory';
+export type SavedSessionMode = 'headless' | 'directory' | 'worktree';
 
 export interface PiSessionStatus {
   state: PiConnectionState;
@@ -11,6 +12,9 @@ export interface PiSessionStatus {
   cwd: string | null;
   pid: number | null;
   error?: string | null;
+  sessionId?: string | null;
+  sessionFilePath?: string | null;
+  name?: string | null;
 }
 
 export interface PiStderrPayload {
@@ -78,6 +82,17 @@ export type PiRpcCommand =
       id?: string;
       type: 'new_session';
       parentSession?: string;
+    }
+  | {
+      id?: string;
+      type: 'switch_session';
+      sessionPath: string;
+      sessionId?: string;
+    }
+  | {
+      id?: string;
+      type: 'set_session_name';
+      name: string;
     }
   | {
       id?: string;
@@ -253,6 +268,85 @@ export interface SessionHistoryEntry {
   state: PiConnectionState;
   messageCount: number;
   toolCallCount: number;
+}
+
+// ============================================================================
+// Persistent Sessions (Phase 3 SQLite Store)
+// ============================================================================
+
+export type SessionFilter =
+  | 'active'
+  | 'running'
+  | 'archived'
+  | 'directory'
+  | 'headless'
+  | 'worktree';
+
+export type SessionGroupBy = 'none' | 'folder' | 'group' | 'date';
+
+export type SessionSortBy =
+  | 'updated_at'
+  | 'created_at'
+  | 'name'
+  | 'total_cost_usd'
+  | 'message_count';
+
+export interface SavedSession {
+  id: string;
+  name: string;
+  title: string;
+  status: string;
+  mode: SavedSessionMode | string;
+  cwd: string | null;
+  sessionFilePath: string | null;
+  piSessionFile?: string | null;
+  groupName: string | null;
+  branch: string | null;
+  worktreePath: string | null;
+  archived: boolean;
+  pinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+  toolCallCount: number;
+  totalTokens: number;
+  totalCostUsd: number;
+  modelId: string | null;
+  model?: string | null;
+  provider: string | null;
+  graphDirection: 'TB' | 'LR' | null;
+  tags: string[];
+}
+
+export interface SaveSessionMetadataInput {
+  id: string;
+  name?: string | null;
+  status?: string | null;
+  mode?: string | null;
+  cwd?: string | null;
+  sessionFilePath?: string | null;
+  groupName?: string | null;
+  branch?: string | null;
+  worktreePath?: string | null;
+  archived?: boolean;
+  pinned?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+  messageCount?: number;
+  toolCallCount?: number;
+  totalTokens?: number;
+  totalCostUsd?: number;
+  modelId?: string | null;
+  provider?: string | null;
+  graphDirection?: 'TB' | 'LR' | null;
+  tags?: string[];
+}
+
+export interface SessionListQuery {
+  search?: string;
+  filter?: SessionFilter | string;
+  sortBy?: SessionSortBy | string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export type FlowNodeCategory =

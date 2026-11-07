@@ -6,10 +6,15 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::Mutex;
+
+use crate::db::Database;
+use crate::storage::{
+    SaveSessionMetadataInput, default_session_name, resolve_session_file_path, sanitize_session_id,
+};
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -22,6 +27,12 @@ pub struct PiSessionStatus {
     pub pid: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(rename = "sessionFilePath", skip_serializing_if = "Option::is_none")]
+    pub session_file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl Default for PiSessionStatus {
@@ -32,8 +43,21 @@ impl Default for PiSessionStatus {
             cwd: None,
             pid: None,
             error: None,
+            session_id: None,
+            session_file_path: None,
+            name: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartPiOptions {
+    pub cwd: Option<String>,
+    pub session_id: Option<String>,
+    pub session_file_path: Option<String>,
+    pub name: Option<String>,
+    pub ephemeral: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +131,13 @@ impl PiRpcManager {
         }
     }
 
+    pub async fn update_active_session_name(&self, session_id: &str, name: &str) {
+        let mut guard = self.inner.lock().await;
+        if guard.status.session_id.as_deref() == Some(session_id) {
+            guard.status.name = Some(name.to_string());
+        }
+    }
+
     pub async fn stop_session(&self, app_handle: &AppHandle) -> PiSessionStatus {
         self.shutdown_existing().await;
 
@@ -118,9 +149,23 @@ impl PiRpcManager {
                 cwd: guard.status.cwd.clone(),
                 pid: None,
                 error: None,
+                session_id: guard.status.session_id.clone(),
+                session_file_path: guard.status.session_file_path.clone(),
+                name: guard.status.name.clone(),
             };
             guard.status.clone()
         };
+
+        if let (Some(sid), Some(db)) = (
+            status.session_id.clone(),
+            app_handle
+                .try_state::<Database>()
+                .map(|s| s.inner().clone()),
+        ) {
+            let _ =
+                tokio::task::spawn_blocking(move || db.set_session_status(&sid, "disconnected"))
+                    .await;
+        }
 
         let _ = app_handle.emit("pi:status", &status);
         status
@@ -129,13 +174,14 @@ impl PiRpcManager {
     pub async fn start_session(
         &self,
         app_handle: &AppHandle,
-        cwd: Option<String>,
+        options: StartPiOptions,
     ) -> Result<PiSessionStatus, String> {
         // Cleanly stop any existing child process first
         self.shutdown_existing().await;
 
         // Resolve working directory and mode
-        let trimmed_cwd = cwd
+        let trimmed_cwd = options
+            .cwd
             .as_ref()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
@@ -151,6 +197,9 @@ impl PiRpcManager {
                         cwd: Some(path_str),
                         pid: None,
                         error: Some(err_msg.clone()),
+                        session_id: None,
+                        session_file_path: None,
+                        name: None,
                     };
                     let mut guard = self.inner.lock().await;
                     guard.status = err_status.clone();
@@ -173,6 +222,9 @@ impl PiRpcManager {
                         cwd: None,
                         pid: None,
                         error: Some(err_msg.clone()),
+                        session_id: None,
+                        session_file_path: None,
+                        name: None,
                     };
                     let mut guard = self.inner.lock().await;
                     guard.status = err_status.clone();
@@ -184,6 +236,50 @@ impl PiRpcManager {
         };
 
         let cwd_display = working_dir.to_string_lossy().to_string();
+        let ephemeral = options.ephemeral.unwrap_or(false);
+
+        let session_id = options
+            .session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(sanitize_session_id)
+            .unwrap_or_else(crate::worktree::new_session_id);
+
+        let session_name = options
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| default_session_name(&mode, Some(&cwd_display), None));
+
+        let session_file_path_buf: Option<PathBuf> = if ephemeral {
+            None
+        } else if let Some(explicit) = options
+            .session_file_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            let p = PathBuf::from(explicit);
+            if let Some(parent) = p.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            Some(p)
+        } else {
+            let sessions_dir = app_handle
+                .path()
+                .app_local_data_dir()
+                .map(|d| d.join("sessions"))
+                .unwrap_or_else(|_| std::env::temp_dir().join("pipan-sessions"));
+            let _ = std::fs::create_dir_all(&sessions_dir);
+            Some(resolve_session_file_path(&sessions_dir, &session_id))
+        };
+
+        let session_file_str = session_file_path_buf
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
 
         // Emit starting status
         let current_generation = {
@@ -195,23 +291,35 @@ impl PiRpcManager {
                 cwd: Some(cwd_display.clone()),
                 pid: None,
                 error: None,
+                session_id: Some(session_id.clone()),
+                session_file_path: session_file_str.clone(),
+                name: Some(session_name.clone()),
             };
             let _ = app_handle.emit("pi:status", &guard.status);
             guard.generation
         };
 
         // Build and spawn the Pi RPC process
-        let mut cmd = build_pi_command(&working_dir);
+        let cli_args = build_pi_session_args(
+            session_file_path_buf.as_deref(),
+            Some(session_name.as_str()),
+            ephemeral,
+            &[],
+        );
+        let mut cmd = build_pi_command_with_args(&working_dir, &cli_args);
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                let err_msg = format!("Failed to spawn `pi --mode rpc --no-session`: {}", e);
+                let err_msg = format!("Failed to spawn `pi --mode rpc`: {}", e);
                 let err_status = PiSessionStatus {
                     state: "error".to_string(),
                     mode,
                     cwd: Some(cwd_display),
                     pid: None,
                     error: Some(err_msg.clone()),
+                    session_id: Some(session_id),
+                    session_file_path: session_file_str,
+                    name: Some(session_name),
                 };
                 let mut guard = self.inner.lock().await;
                 guard.status = err_status.clone();
@@ -249,9 +357,29 @@ impl PiRpcManager {
                 cwd: Some(cwd_display.clone()),
                 pid,
                 error: None,
+                session_id: Some(session_id.clone()),
+                session_file_path: session_file_str.clone(),
+                name: Some(session_name.clone()),
             };
             guard.status.clone()
         };
+
+        if !ephemeral
+            && let Some(db) = app_handle
+                .try_state::<Database>()
+                .map(|s| s.inner().clone())
+        {
+            let meta = SaveSessionMetadataInput {
+                id: session_id.clone(),
+                name: options.name.clone().or(Some(session_name.clone())),
+                status: Some("running".to_string()),
+                mode: Some(mode.clone()),
+                cwd: Some(cwd_display.clone()),
+                session_file_path: session_file_str.clone(),
+                ..Default::default()
+            };
+            let _ = tokio::task::spawn_blocking(move || db.save_session_metadata(&meta)).await;
+        }
 
         let _ = app_handle.emit("pi:status", &running_status);
 
@@ -352,14 +480,34 @@ impl PiRpcManager {
                     ),
                     _ => ("disconnected".to_string(), None),
                 };
+                let exited_sid = guard.status.session_id.clone();
+                let next_state_for_db = next_state.clone();
                 guard.status = PiSessionStatus {
                     state: next_state,
                     mode: guard.status.mode.clone(),
                     cwd: guard.status.cwd.clone(),
                     pid: None,
                     error: err_msg,
+                    session_id: guard.status.session_id.clone(),
+                    session_file_path: guard.status.session_file_path.clone(),
+                    name: guard.status.name.clone(),
                 };
-                let _ = app_stdout.emit("pi:status", &guard.status);
+                let status_snapshot = guard.status.clone();
+                drop(guard);
+
+                if let (Some(sid), Some(db)) = (
+                    exited_sid,
+                    app_stdout
+                        .try_state::<Database>()
+                        .map(|s| s.inner().clone()),
+                ) {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        db.set_session_status(&sid, &next_state_for_db)
+                    })
+                    .await;
+                }
+
+                let _ = app_stdout.emit("pi:status", &status_snapshot);
             }
         });
 
@@ -372,6 +520,19 @@ impl PiRpcManager {
         payload.push(b'\n');
 
         let mut guard = self.inner.lock().await;
+        if command.get("type").and_then(Value::as_str) == Some("switch_session")
+            && let Some(path) = command.get("sessionPath").and_then(Value::as_str)
+        {
+            guard.status.session_file_path = Some(path.to_string());
+            if let Some(sid) = command.get("sessionId").and_then(Value::as_str) {
+                guard.status.session_id = Some(sid.to_string());
+            }
+        } else if command.get("type").and_then(Value::as_str) == Some("set_session_name")
+            && let Some(name) = command.get("name").and_then(Value::as_str)
+        {
+            guard.status.name = Some(name.to_string());
+        }
+
         let active = guard
             .active
             .as_mut()
@@ -443,11 +604,41 @@ pub(crate) async fn terminate_process_tree(child: &mut Child, pid: Option<u32>) 
     }
 }
 
+/// Builds the session persistence CLI arguments for `pi --mode rpc`.
+///
+/// * When `ephemeral` is `false` (default): omits `--no-session`, passes `--session <path>`
+///   when `session_file` is provided, and passes `--name <label>` when `session_name` is non-empty.
+/// * When `ephemeral` is `true`: passes `--no-session`.
+pub(crate) fn build_pi_session_args(
+    session_file: Option<&Path>,
+    session_name: Option<&str>,
+    ephemeral: bool,
+    extra_args: &[OsString],
+) -> Vec<OsString> {
+    let mut args = Vec::new();
+    if ephemeral {
+        args.push(OsString::from("--no-session"));
+    } else {
+        if let Some(path) = session_file {
+            args.push(OsString::from("--session"));
+            args.push(path.as_os_str().to_os_string());
+        }
+        if let Some(label) = session_name.map(str::trim).filter(|s| !s.is_empty()) {
+            args.push(OsString::from("--name"));
+            args.push(OsString::from(label));
+        }
+    }
+    args.extend_from_slice(extra_args);
+    args
+}
+
+#[allow(dead_code)]
 pub(crate) fn build_pi_command(working_dir: &Path) -> Command {
     build_pi_command_with_args(working_dir, &[])
 }
 
-/// Like [`build_pi_command`] but appends `extra_args` after `--mode rpc --no-session`.
+/// Spawns `pi --mode rpc` in `working_dir` and appends `extra_args` (such as `--session <path>`,
+/// `--name <label>`, `--extension <path>`, or `--no-session` when ephemeral).
 pub(crate) fn build_pi_command_with_args(working_dir: &Path, extra_args: &[OsString]) -> Command {
     let resolved_path = get_augmented_path();
 
@@ -457,15 +648,15 @@ pub(crate) fn build_pi_command_with_args(working_dir: &Path, extra_args: &[OsStr
         // and invoke via cmd.exe so `.cmd` shims created by npm/pnpm work seamlessly without flashing a console window.
         let mut cmd = if let Some(pi_exe) = find_executable_in_path("pi.exe", &resolved_path) {
             let mut c = Command::new(pi_exe);
-            c.args(["--mode", "rpc", "--no-session"]);
+            c.args(["--mode", "rpc"]);
             c
         } else if let Some(pi_cmd) = find_executable_in_path("pi.cmd", &resolved_path) {
             let mut c = Command::new(pi_cmd);
-            c.args(["--mode", "rpc", "--no-session"]);
+            c.args(["--mode", "rpc"]);
             c
         } else {
             let mut c = Command::new("cmd.exe");
-            c.args(["/d", "/c", "pi", "--mode", "rpc", "--no-session"]);
+            c.args(["/d", "/c", "pi", "--mode", "rpc"]);
             c
         };
         if !resolved_path.is_empty() {
@@ -489,7 +680,7 @@ pub(crate) fn build_pi_command_with_args(working_dir: &Path, extra_args: &[OsStr
         if !resolved_path.is_empty() {
             cmd.env("PATH", &resolved_path);
         }
-        cmd.args(["--mode", "rpc", "--no-session"])
+        cmd.args(["--mode", "rpc"])
             .args(extra_args)
             .current_dir(working_dir)
             .stdin(Stdio::piped())
@@ -669,8 +860,23 @@ pub async fn start_pi_session(
     app_handle: AppHandle,
     manager: State<'_, PiRpcManager>,
     cwd: Option<String>,
+    session_id: Option<String>,
+    session_file_path: Option<String>,
+    name: Option<String>,
+    ephemeral: Option<bool>,
 ) -> Result<PiSessionStatus, String> {
-    manager.start_session(&app_handle, cwd).await
+    manager
+        .start_session(
+            &app_handle,
+            StartPiOptions {
+                cwd,
+                session_id,
+                session_file_path,
+                name,
+                ephemeral,
+            },
+        )
+        .await
 }
 
 #[tauri::command]
@@ -797,5 +1003,32 @@ mod tests {
         assert_eq!(stdout.trim(), "args:--mode rpc --no-session");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_build_pi_session_args_persistent_and_ephemeral() {
+        let path = Path::new("/tmp/sessions/sess-1.jsonl");
+        let persistent = build_pi_session_args(Some(path), Some("My Session"), false, &[]);
+        let persistent_strs: Vec<String> = persistent
+            .iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(!persistent_strs.contains(&"--no-session".to_string()));
+        assert_eq!(
+            persistent_strs,
+            vec![
+                "--session".to_string(),
+                path.to_string_lossy().to_string(),
+                "--name".to_string(),
+                "My Session".to_string()
+            ]
+        );
+
+        let ephemeral = build_pi_session_args(Some(path), Some("Ignored"), true, &[]);
+        let ephemeral_strs: Vec<String> = ephemeral
+            .iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(ephemeral_strs, vec!["--no-session".to_string()]);
     }
 }
