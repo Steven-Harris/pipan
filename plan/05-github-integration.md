@@ -26,7 +26,7 @@
     2. `Review Requested` (`is:open review-requested:@me`)
     3. `Created by Me` (`is:open author:@me`)
     4. `All Open PRs` (`is:open`)
-  - Custom Views Builder: Users can create, edit, and delete custom views with any `gh` search syntax (e.g., `is:open label:bug draft:false`), persisted in `pipan-metadata.json` (`githubViews`).
+  - Custom Views Builder: Users can create, edit, and delete custom views with any `gh` search syntax (e.g., `is:open label:bug draft:false`), persisted in the `github_views` table of `pipan.db` (`id`, `name`, `query`, `sort_order`).
 - **PR Detail & Review Workspace**:
   - Three sub-tabs inside a selected PR:
     - **Overview & Conversation**: PR description, labels, branch badges, timeline of comments & reviews, comment composer, and **Merge PR** action bar (Merge Commit / Squash / Rebase + Delete branch).
