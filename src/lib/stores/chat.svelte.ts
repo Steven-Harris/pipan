@@ -99,7 +99,6 @@ class ChatStore {
 
   // UI Shell state (Phase 1)
   sidebarOpen = $state<boolean>(true);
-  drawerMode = $state<'split' | 'expanded' | 'collapsed'>('split');
   selectedNodeId = $state<string | null>(null);
   sessionHistory = $state<SessionHistoryEntry[]>([]);
   activeSessionId = $state<string | null>(null);
@@ -158,10 +157,6 @@ class ChatStore {
 
   toggleSidebar(): void {
     this.sidebarOpen = !this.sidebarOpen;
-  }
-
-  setDrawerMode(mode: 'split' | 'expanded' | 'collapsed'): void {
-    this.drawerMode = mode;
   }
 
   private recordSessionStart(status: PiSessionStatus): void {

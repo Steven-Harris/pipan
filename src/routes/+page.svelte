@@ -3,12 +3,13 @@
   import { AlertCircle, X } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { flowStore } from '#lib/stores/flow.svelte.ts';
+  import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import SessionHeader from '#lib/components/SessionHeader.svelte';
   import Sidebar from '#lib/components/Sidebar.svelte';
-  import FlowCanvas from '#lib/components/FlowCanvas.svelte';
-  import BottomDrawer from '#lib/components/BottomDrawer.svelte';
+  import WorkspaceLayout from '#lib/components/WorkspaceLayout.svelte';
 
   onMount(() => {
+    workspaceStore.init();
     chatStore.init();
     flowStore.init();
   });
@@ -35,13 +36,12 @@
     </div>
   {/if}
 
-  <!-- Phase 1 Application Shell: Left Sidebar + Main Canvas & Bottom Chat/Steering Drawer -->
+  <!-- Application shell: sidebar + chat-first workspace with optional split panels -->
   <div class="flex flex-1 min-h-0 overflow-hidden">
     <Sidebar />
 
     <main class="flex flex-1 min-w-0 flex-col overflow-hidden">
-      <FlowCanvas />
-      <BottomDrawer />
+      <WorkspaceLayout />
     </main>
   </div>
 </div>
