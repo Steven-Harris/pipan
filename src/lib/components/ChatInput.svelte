@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
@@ -18,7 +17,6 @@
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import type {
-    FileAttachmentPayload,
     PiSkillItem,
     PromptAttachment,
     StreamingBehavior
@@ -36,11 +34,11 @@
   let isSkillPopoverOpen = $state(false);
   let activeSlashMatch = $state<{ start: number; end: number; query: string } | null>(null);
 
-  // File & Image Attachments state
-  let attachments = $state<PromptAttachment[]>([]);
+  // File & Image Attachments state (shared on chatStore so FileExplorerPanel can attach directly)
   let isDraggingOver = $state(false);
   let isPickingFiles = $state(false);
 
+  const attachments = $derived(chatStore.promptAttachments);
   const isConnected = $derived(chatStore.sessionStatus.state === 'running');
   const canSend = $derived(
     isConnected &&
@@ -105,24 +103,12 @@
   }
 
   function removeAttachment(id: string) {
-    attachments = attachments.filter((a) => a.id !== id);
+    chatStore.removePromptAttachment(id);
   }
 
   async function addAttachmentsFromPaths(paths: string[]) {
     for (const rawPath of paths) {
-      const trimmed = rawPath.trim();
-      if (!trimmed) continue;
-      if (attachments.some((a) => a.path === trimmed)) continue;
-
-      try {
-        const payload = await invoke<FileAttachmentPayload>('read_file_attachment', {
-          path: trimmed,
-          cwd: chatStore.sessionStatus.cwd ?? null
-        });
-        attachments = [...attachments, { ...payload, id: makeAttachmentId() }];
-      } catch (err) {
-        chatStore.lastError = err instanceof Error ? err.message : String(err);
-      }
+      await chatStore.attachFileFromPath(rawPath);
     }
   }
 
@@ -174,36 +160,30 @@
           const commaIdx = dataUrl.indexOf(',');
           const base64 = commaIdx !== -1 ? dataUrl.slice(commaIdx + 1) : dataUrl;
           const mimeType = inferImageMime(file.name, file.type);
-          attachments = [
-            ...attachments,
-            {
-              id: makeAttachmentId(),
-              kind: 'image',
-              type: 'image',
-              name: file.name,
-              path: file.name,
-              insideWorkspace: false,
-              mimeType,
-              sizeBytes: file.size,
-              data: base64
-            }
-          ];
+          chatStore.addPromptAttachment({
+            id: makeAttachmentId(),
+            kind: 'image',
+            type: 'image',
+            name: file.name,
+            path: file.name,
+            insideWorkspace: false,
+            mimeType,
+            sizeBytes: file.size,
+            data: base64
+          });
         } else {
           const textContent = file.size <= 256 * 1024 ? await readBrowserFileAsText(file) : undefined;
-          attachments = [
-            ...attachments,
-            {
-              id: makeAttachmentId(),
-              kind: 'file',
-              type: 'file',
-              name: file.name,
-              path: file.name,
-              insideWorkspace: false,
-              mimeType: file.type || 'text/plain',
-              sizeBytes: file.size,
-              textContent
-            }
-          ];
+          chatStore.addPromptAttachment({
+            id: makeAttachmentId(),
+            kind: 'file',
+            type: 'file',
+            name: file.name,
+            path: file.name,
+            insideWorkspace: false,
+            mimeType: file.type || 'text/plain',
+            sizeBytes: file.size,
+            textContent
+          });
         }
       } catch (err) {
         chatStore.lastError = err instanceof Error ? err.message : String(err);
@@ -243,6 +223,11 @@
   async function handleHtmlDrop(e: DragEvent) {
     e.preventDefault();
     isDraggingOver = false;
+    const pipanFilePath = e.dataTransfer?.getData('application/x-pipan-file-path')?.trim();
+    if (pipanFilePath) {
+      await addAttachmentsFromPaths([pipanFilePath]);
+      return;
+    }
     if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
       await addAttachmentsFromBrowserFiles(e.dataTransfer.files);
     }
@@ -332,7 +317,7 @@
 
     draft = '';
     selectedSkills = [];
-    attachments = [];
+    chatStore.clearPromptAttachments();
     activeSlashMatch = null;
     isSkillPopoverOpen = false;
     if (textareaEl) {

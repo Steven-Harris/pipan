@@ -2,11 +2,13 @@ pub mod agent;
 pub mod approval;
 pub mod db;
 pub mod files;
+pub mod fs_explorer;
 pub mod github;
 pub mod models;
 pub mod pi_rpc;
 pub mod skills;
 pub mod storage;
+pub mod terminal;
 pub mod webhook;
 pub mod worktree;
 
@@ -20,6 +22,7 @@ use db::{
     load_node_positions, save_github_view, save_node_positions, set_graph_direction,
 };
 use files::read_file_attachment;
+use fs_explorer::{get_git_file_statuses, list_workspace_files, read_workspace_file};
 use github::{
     gh_auth_login_token, gh_auth_login_web, gh_auth_logout, gh_issue_list, gh_json, gh_pr_checks,
     gh_pr_comment, gh_pr_detail, gh_pr_diff, gh_pr_list, gh_pr_merge, gh_pr_review_comments,
@@ -29,6 +32,10 @@ use models::list_configured_models;
 use skills::list_installed_skills;
 use storage::{
     archive_session, delete_session, list_saved_sessions, rename_session, save_session_metadata,
+};
+use terminal::{
+    TerminalManager, resize_terminal, send_terminal_input, start_terminal_session,
+    stop_terminal_session,
 };
 use webhook::{
     WebhookManager, get_webhook_forwarder, start_webhook_forwarder, stop_webhook_forwarder,
@@ -68,6 +75,7 @@ pub fn run() {
         .manage(PiRpcManager::new())
         .manage(AgentManager::new())
         .manage(WebhookManager::new())
+        .manage(TerminalManager::new())
         .invoke_handler(tauri::generate_handler![
             start_pi_session,
             stop_pi_session,
@@ -113,7 +121,14 @@ pub fn run() {
             delete_session,
             list_configured_models,
             list_installed_skills,
-            read_file_attachment
+            read_file_attachment,
+            start_terminal_session,
+            send_terminal_input,
+            resize_terminal,
+            stop_terminal_session,
+            list_workspace_files,
+            get_git_file_statuses,
+            read_workspace_file
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -123,10 +138,12 @@ pub fn run() {
             let manager = app_handle.state::<PiRpcManager>().inner().clone();
             let agents = app_handle.state::<AgentManager>().inner().clone();
             let webhooks = app_handle.state::<WebhookManager>().inner().clone();
+            let terminals = app_handle.state::<TerminalManager>().inner().clone();
             tauri::async_runtime::block_on(async move {
                 manager.shutdown().await;
                 agents.shutdown_all().await;
                 webhooks.shutdown().await;
+                terminals.shutdown_all().await;
             });
         }
     });

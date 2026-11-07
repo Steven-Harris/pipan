@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   ChatMessage,
   ContentBlock,
+  FileAttachmentPayload,
   PiFullModelInfo,
   PiModelCostInfo,
   PiModelInfo,
@@ -12,6 +13,7 @@ import type {
   PiSessionStatus,
   PiSkillItem,
   PiStderrPayload,
+  PromptAttachment,
   SavedSession,
   SaveSessionMetadataInput,
   SessionFilter,
@@ -127,6 +129,21 @@ class ChatStore {
   selectedThinkingLevel = $state<string>('medium');
   installedSkills = $state<PiSkillItem[]>([]);
   rpcCommands = $state<PiSkillItem[]>([]);
+
+  // Shared Prompt Attachments (Phase 4 & Phase 6 File Explorer "+ Attach to Prompt")
+  promptAttachments = $state<PromptAttachment[]>([]);
+
+  readonly effectiveWorkspaceCwd = $derived.by((): string | null => {
+    if (this.sessionStatus.cwd) {
+      return this.sessionStatus.cwd;
+    }
+    if (this.activeSessionId) {
+      const saved = this.savedSessions.find((s) => s.id === this.activeSessionId);
+      if (saved?.worktreePath) return saved.worktreePath;
+      if (saved?.cwd) return saved.cwd;
+    }
+    return null;
+  });
 
   readonly availableSkills = $derived.by((): PiSkillItem[] => {
     const map = new Map<string, PiSkillItem>();
@@ -869,6 +886,61 @@ class ChatStore {
     }
   }
 
+  async runBashCommand(command: string): Promise<string> {
+    const trimmed = command.trim();
+    if (!trimmed) {
+      throw new Error('Command must not be empty');
+    }
+    if (this.sessionStatus.state !== 'running') {
+      throw new Error('Start a Pi session before sending a command via Pi bash RPC');
+    }
+    const id = makeId();
+    await this.sendCommand({
+      id,
+      type: 'bash',
+      command: trimmed
+    });
+    return id;
+  }
+
+  addPromptAttachment(attachment: PromptAttachment): void {
+    if (this.promptAttachments.some((a) => a.path === attachment.path && a.name === attachment.name)) {
+      return;
+    }
+    this.promptAttachments = [...this.promptAttachments, attachment];
+  }
+
+  removePromptAttachment(id: string): void {
+    this.promptAttachments = this.promptAttachments.filter((a) => a.id !== id);
+  }
+
+  clearPromptAttachments(): void {
+    this.promptAttachments = [];
+  }
+
+  async attachFileFromPath(rawPath: string): Promise<PromptAttachment | null> {
+    const trimmed = rawPath.trim();
+    if (!trimmed) return null;
+    const existing = this.promptAttachments.find((a) => a.path === trimmed);
+    if (existing) return existing;
+
+    try {
+      const payload = await invoke<FileAttachmentPayload>('read_file_attachment', {
+        path: trimmed,
+        cwd: this.effectiveWorkspaceCwd
+      });
+      const attachment: PromptAttachment = {
+        ...payload,
+        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      };
+      this.promptAttachments = [...this.promptAttachments, attachment];
+      return attachment;
+    } catch (err) {
+      this.lastError = err instanceof Error ? err.message : String(err);
+      return null;
+    }
+  }
+
   async newSession(): Promise<void> {
     if (this.sessionStatus.state !== 'running') {
       this.messages = [];
@@ -1606,6 +1678,11 @@ class ChatStore {
 
     if (event.command === 'switch_session') {
       void this.requestState();
+      void this.requestMessages();
+      return;
+    }
+
+    if (event.command === 'bash') {
       void this.requestMessages();
     }
   }

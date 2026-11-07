@@ -8,6 +8,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+pub use crate::fs_explorer::{
+    WorkspaceFileEntry, WorkspaceFilePreview, get_git_file_statuses, list_workspace_files,
+    read_workspace_file,
+};
+
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024; // 20 MiB
 const MAX_INLINE_TEXT_BYTES: u64 = 256 * 1024; // 256 KiB
 
