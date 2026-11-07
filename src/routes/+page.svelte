@@ -7,6 +7,8 @@
   import SessionHeader from '#lib/components/SessionHeader.svelte';
   import Sidebar from '#lib/components/Sidebar.svelte';
   import WorkspaceLayout from '#lib/components/WorkspaceLayout.svelte';
+  import StatusBar from '#lib/components/StatusBar.svelte';
+  import CostAnalyticsPage from '#lib/components/CostAnalyticsPage.svelte';
 
   onMount(() => {
     workspaceStore.init();
@@ -41,7 +43,13 @@
     <Sidebar />
 
     <main class="flex flex-1 min-w-0 flex-col overflow-hidden">
-      <WorkspaceLayout />
+      {#if workspaceStore.currentView === 'cost'}
+        <CostAnalyticsPage />
+      {:else}
+        <WorkspaceLayout />
+      {/if}
     </main>
   </div>
+
+  <StatusBar />
 </div>

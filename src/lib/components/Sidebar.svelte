@@ -24,6 +24,7 @@
     Coins
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import type {
     SavedSession,
     SessionFilter,
@@ -230,19 +231,22 @@
     class="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/60 select-none"
   >
     <!-- Top Tab Switcher -->
-    <div class="grid grid-cols-2 gap-1 border-b border-zinc-800/80 p-2">
+    <div class="grid grid-cols-3 gap-1 border-b border-zinc-800/80 p-2">
       <button
         type="button"
-        onclick={() => (activeTab = 'sessions')}
-        class="inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
-        'sessions'
+        onclick={() => {
+          activeTab = 'sessions';
+          workspaceStore.openChatView();
+        }}
+        class="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
+          'sessions' && workspaceStore.currentView === 'chat'
           ? 'bg-zinc-800 text-zinc-100 shadow-sm'
           : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
       >
         <History class="h-3.5 w-3.5 text-indigo-400" />
-        <span>Sessions</span>
+        <span class="truncate">Sessions</span>
         {#if chatStore.savedSessions.length > 0}
-          <span class="rounded-full bg-zinc-700/80 px-1.5 py-0.2 font-mono text-[10px] text-zinc-200 tabular-nums">
+          <span class="hidden sm:inline-block rounded-full bg-zinc-700/80 px-1 py-0.2 font-mono text-[9px] text-zinc-200 tabular-nums">
             {chatStore.savedSessions.length}
           </span>
         {/if}
@@ -250,14 +254,30 @@
 
       <button
         type="button"
-        onclick={() => (activeTab = 'prs')}
-        class="inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
-        'prs'
+        onclick={() => {
+          activeTab = 'prs';
+          workspaceStore.openChatView();
+        }}
+        class="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
+          'prs' && workspaceStore.currentView === 'chat'
           ? 'bg-zinc-800 text-zinc-100 shadow-sm'
           : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
       >
         <GitPullRequest class="h-3.5 w-3.5 text-sky-400" />
-        <span>Pull Requests</span>
+        <span class="truncate">PRs</span>
+      </button>
+
+      <button
+        type="button"
+        onclick={() => workspaceStore.toggleCostView()}
+        class="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {workspaceStore.currentView ===
+        'cost'
+          ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40 shadow-sm'
+          : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
+        title="Open Cost & Usage Analytics"
+      >
+        <Coins class="h-3.5 w-3.5 text-amber-400" />
+        <span class="truncate">Cost</span>
       </button>
     </div>
 

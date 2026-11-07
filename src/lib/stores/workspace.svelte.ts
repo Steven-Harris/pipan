@@ -6,6 +6,7 @@
 
 export type PanelId = 'nodes' | 'terminal' | 'files' | 'prs';
 export type SplitOrientation = 'vertical' | 'horizontal';
+export type MainView = 'chat' | 'cost';
 
 export const PANEL_IDS: readonly PanelId[] = ['nodes', 'terminal', 'files', 'prs'];
 
@@ -65,6 +66,7 @@ class WorkspaceStore {
   openPanels = $state<PanelId[]>([]);
   activePanel = $state<PanelId | null>(null);
   splitRatio = $state<number>(DEFAULT_SPLIT_RATIO);
+  currentView = $state<MainView>('chat');
 
   private loaded = false;
 
@@ -139,6 +141,18 @@ class WorkspaceStore {
 
   commitSplitRatio(): void {
     this.persist();
+  }
+
+  openCostView(): void {
+    this.currentView = 'cost';
+  }
+
+  openChatView(): void {
+    this.currentView = 'chat';
+  }
+
+  toggleCostView(): void {
+    this.currentView = this.currentView === 'cost' ? 'chat' : 'cost';
   }
 
   private persist(): void {

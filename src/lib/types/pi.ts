@@ -173,6 +173,10 @@ export type PiRpcCommand =
     }
   | {
       id?: string;
+      type: 'get_session_stats';
+    }
+  | {
+      id?: string;
       type: 'bash';
       command: string;
     }

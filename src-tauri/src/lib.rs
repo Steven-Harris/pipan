@@ -9,6 +9,7 @@ pub mod pi_rpc;
 pub mod skills;
 pub mod storage;
 pub mod terminal;
+pub mod usage;
 pub mod webhook;
 pub mod worktree;
 
@@ -37,6 +38,7 @@ use terminal::{
     TerminalManager, resize_terminal, send_terminal_input, start_terminal_session,
     stop_terminal_session,
 };
+use usage::{get_usage_analytics, record_usage_entry, rescan_usage_files};
 use webhook::{
     WebhookManager, get_webhook_forwarder, start_webhook_forwarder, stop_webhook_forwarder,
 };
@@ -128,7 +130,10 @@ pub fn run() {
             stop_terminal_session,
             list_workspace_files,
             get_git_file_statuses,
-            read_workspace_file
+            read_workspace_file,
+            get_usage_analytics,
+            rescan_usage_files,
+            record_usage_entry
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

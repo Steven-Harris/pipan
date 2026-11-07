@@ -9,6 +9,7 @@
 //! Version 2 (persistent sessions): extends `sessions` with full session metadata,
 //! adds `session_tags`, and creates indexes for search/filter/sort queries.
 //! Version 3 (github integration): adds `github_views` for custom saved PR search views.
+//! Version 4 (cost & usage analytics): adds `usage_ledger` and `usage_file_checkpoints`.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -74,6 +75,30 @@ const MIGRATIONS: &[&str] = &[
         sort_order  INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX idx_github_views_sort_order ON github_views(sort_order);",
+    // v4: usage ledger and JSONL file scan checkpoints for cost & token analytics.
+    "CREATE TABLE usage_ledger (
+        session_id   TEXT NOT NULL,
+        message_id   TEXT NOT NULL,
+        timestamp    INTEGER NOT NULL,
+        provider     TEXT NOT NULL DEFAULT 'unknown',
+        model        TEXT NOT NULL DEFAULT 'unknown',
+        input        INTEGER NOT NULL DEFAULT 0,
+        output       INTEGER NOT NULL DEFAULT 0,
+        cache_read   INTEGER NOT NULL DEFAULT 0,
+        cache_write  INTEGER NOT NULL DEFAULT 0,
+        cost_usd     REAL NOT NULL DEFAULT 0.0,
+        cwd          TEXT,
+        PRIMARY KEY (session_id, message_id)
+    );
+    CREATE INDEX idx_usage_ledger_timestamp ON usage_ledger(timestamp);
+    CREATE INDEX idx_usage_ledger_session_id ON usage_ledger(session_id);
+    CREATE INDEX idx_usage_ledger_provider_model ON usage_ledger(provider, model);
+
+    CREATE TABLE usage_file_checkpoints (
+        path         TEXT PRIMARY KEY,
+        mtime        INTEGER NOT NULL DEFAULT 0,
+        byte_offset  INTEGER NOT NULL DEFAULT 0
+    );",
 ];
 
 /// A saved custom GitHub PR search view persisted in `github_views`.
@@ -600,5 +625,31 @@ mod tests {
         assert!(db.delete_github_view("view-bugs").unwrap());
         assert!(!db.delete_github_view("view-bugs").unwrap());
         assert_eq!(db.list_github_views().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn migrates_to_v4_and_supports_usage_ledger() {
+        let db = Database::open_in_memory().unwrap();
+        let version: i64 = db
+            .lock()
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 4);
+
+        // Verify usage_ledger and usage_file_checkpoints exist and accept rows
+        let conn = db.lock();
+        conn.execute(
+            "INSERT INTO usage_ledger (session_id, message_id, timestamp, provider, model, cost_usd)
+             VALUES ('s-v4', 'm-v4', 1715000000, 'anthropic', 'claude-3-7-sonnet', 0.05)",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO usage_file_checkpoints (path, mtime, byte_offset)
+             VALUES ('/path/test.jsonl', 1715000000, 1024)",
+            [],
+        )
+        .unwrap();
     }
 }
