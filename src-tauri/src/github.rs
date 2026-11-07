@@ -4,10 +4,16 @@
 //! REST polling. Read-only commands return parsed JSON to the frontend; live
 //! updates arrive through [`crate::webhook`].
 
-use serde::Serialize;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use tauri::{AppHandle, Emitter};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 use crate::pi_rpc::get_augmented_path;
@@ -75,6 +81,42 @@ pub async fn run_gh(args: &[String], cwd: Option<&Path>) -> Result<String, Strin
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let pending_checks = output.status.code() == Some(8) && !stdout.is_empty();
     if !output.status.success() && !pending_checks {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if stderr.is_empty() { stdout } else { stderr };
+        return Err(format!("`gh {}` failed: {}", args.join(" "), detail));
+    }
+    Ok(stdout)
+}
+
+/// Runs `gh <args>` with `stdin_data` piped into standard input and returns trimmed stdout.
+pub async fn run_gh_with_input(
+    args: &[String],
+    stdin_data: &str,
+    cwd: Option<&Path>,
+) -> Result<String, String> {
+    let mut cmd = gh_command(args, cwd);
+    cmd.stdin(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "GitHub CLI (`gh`) was not found on PATH. Install it from https://cli.github.com"
+                .to_string()
+        } else {
+            format!("Failed to spawn `gh {}`: {}", args.join(" "), e)
+        }
+    })?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(stdin_data.as_bytes())
+            .await
+            .map_err(|e| format!("Failed to write to `gh` stdin: {}", e))?;
+        let _ = stdin.shutdown().await;
+    }
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("Failed to wait for `gh {}`: {}", args.join(" "), e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let detail = if stderr.is_empty() { stdout } else { stderr };
         return Err(format!("`gh {}` failed: {}", args.join(" "), detail));
@@ -221,7 +263,11 @@ pub async fn gh_json(args: Vec<String>, cwd: Option<String>) -> Result<Value, St
 const PR_VIEW_FIELDS: &str = "number,title,state,url,headRefName,baseRefName,author,isDraft,\
 mergeable,reviewDecision,statusCheckRollup,updatedAt,body";
 const PR_LIST_FIELDS: &str = "number,title,state,url,headRefName,baseRefName,author,isDraft,\
-reviewDecision,updatedAt";
+reviewDecision,statusCheckRollup,labels,assignees,reviewRequests,updatedAt,additions,deletions,changedFiles";
+const PR_DETAIL_FIELDS: &str = "number,title,state,url,headRefName,baseRefName,headRefOid,author,\
+isDraft,reviewDecision,statusCheckRollup,labels,assignees,reviewRequests,updatedAt,createdAt,\
+mergedAt,closedAt,additions,deletions,changedFiles,body,comments,reviews,files,commits,\
+mergeable,mergeStateStatus";
 const PR_CHECK_FIELDS: &str = "name,state,bucket,workflow,link,event,startedAt,completedAt";
 const ISSUE_LIST_FIELDS: &str = "number,title,state,url,author,labels,updatedAt";
 const RUN_LIST_FIELDS: &str = "databaseId,displayTitle,status,conclusion,workflowName,\
@@ -288,15 +334,34 @@ pub async fn gh_pr_list(
     cwd: Option<String>,
     repo: Option<String>,
     state: Option<String>,
+    search: Option<String>,
     limit: Option<u32>,
     fields: Option<Vec<String>>,
 ) -> Result<Value, String> {
+    let args = build_pr_list_args(repo, state, search, limit, fields)?;
+    run_gh_json(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+}
+
+pub fn build_pr_list_args(
+    repo: Option<String>,
+    state: Option<String>,
+    search: Option<String>,
+    limit: Option<u32>,
+    fields: Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
     let mut args = to_args(&["pr", "list"]);
     repo_args(repo, &mut args)?;
     push_state_limit(&mut args, state, limit)?;
+    if let Some(q) = search
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--search".into());
+        args.push(q);
+    }
     args.push("--json".into());
     args.push(fields_arg(fields, PR_LIST_FIELDS)?);
-    run_gh_json(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+    Ok(args)
 }
 
 /// `gh pr checks [selector] --json …`.
@@ -379,6 +444,823 @@ fn push_state_limit(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Phase 5: Auth, PR Detail, Diff, Review Comments, Comment/Review/Merge
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GhAuthCodeEvent {
+    pub code: String,
+    pub hostname: String,
+    pub verification_uri: String,
+}
+
+pub fn is_valid_hostname(host: &str) -> bool {
+    let h = host.trim();
+    !h.is_empty()
+        && !h.starts_with('-')
+        && !h.starts_with('.')
+        && !h.ends_with('.')
+        && h.contains('.')
+        && h.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.'))
+}
+
+fn resolve_hostname(hostname: Option<String>) -> Result<String, String> {
+    let host = hostname
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "github.com".to_string());
+    if !is_valid_hostname(&host) {
+        return Err(format!("Invalid hostname: {}", host));
+    }
+    Ok(host)
+}
+
+fn validate_scopes(scopes: Option<Vec<String>>) -> Result<Option<String>, String> {
+    let Some(list) = scopes else {
+        return Ok(None);
+    };
+    let cleaned: Vec<String> = list
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if cleaned.is_empty() {
+        return Ok(None);
+    }
+    for s in &cleaned {
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-'))
+        {
+            return Err(format!("Invalid OAuth scope: {}", s));
+        }
+    }
+    Ok(Some(cleaned.join(",")))
+}
+
+fn is_device_code_token(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    bytes.len() == 9
+        && bytes[4] == b'-'
+        && bytes[..4]
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        && bytes[5..]
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
+/// Extracts the 8-character hyphenated device code (`XXXX-XXXX`) from `gh auth login --web` output.
+pub fn parse_device_code(text: &str) -> Option<String> {
+    for line in text.lines() {
+        if let Some((_, rest)) = line.split_once("one-time code:") {
+            for word in rest.split_whitespace() {
+                let trimmed = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
+                if is_device_code_token(trimmed) {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+        for word in line.split_whitespace() {
+            let trimmed = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
+            if is_device_code_token(trimmed) {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn spawn_auth_stream_reader<R>(
+    reader: R,
+    app: AppHandle,
+    hostname: String,
+    emitted: Arc<AtomicBool>,
+    collected: Arc<std::sync::Mutex<Vec<String>>>,
+) -> tokio::task::JoinHandle<()>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let trimmed = line.trim().to_string();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(mut buf) = collected.lock() {
+                buf.push(trimmed.clone());
+            }
+            if !emitted.load(Ordering::Relaxed)
+                && let Some(code) = parse_device_code(&trimmed)
+                && !emitted.swap(true, Ordering::Relaxed)
+            {
+                let verification_uri = if hostname == "github.com" {
+                    "https://github.com/login/device".to_string()
+                } else {
+                    format!("https://{}/login/device", hostname)
+                };
+                let _ = app.emit(
+                    "github:auth-code",
+                    GhAuthCodeEvent {
+                        code,
+                        hostname: hostname.clone(),
+                        verification_uri,
+                    },
+                );
+            }
+        }
+    })
+}
+
+/// Spawns `gh auth login --web -h <hostname> -p https`, emits `github:auth-code`
+/// with the one-time device code, and awaits authentication completion.
+#[tauri::command]
+pub async fn gh_auth_login_web(
+    app: AppHandle,
+    hostname: Option<String>,
+    scopes: Option<Vec<String>>,
+) -> Result<GhStatus, String> {
+    let host = resolve_hostname(hostname)?;
+    let mut args = to_args(&["auth", "login", "--web", "-h", &host, "-p", "https"]);
+    if let Some(scope_csv) = validate_scopes(scopes)? {
+        args.push("--scopes".into());
+        args.push(scope_csv);
+    }
+
+    let mut cmd = Command::new("gh");
+    cmd.args(&args)
+        .env("GH_NO_UPDATE_NOTIFIER", "1")
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let path = get_augmented_path();
+    if !path.is_empty() {
+        cmd.env("PATH", path);
+    }
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "GitHub CLI (`gh`) was not found on PATH. Install it from https://cli.github.com"
+                .to_string()
+        } else {
+            format!("Failed to spawn `gh auth login --web`: {}", e)
+        }
+    })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(b"\n").await;
+        let _ = stdin.shutdown().await;
+    }
+
+    let emitted = Arc::new(AtomicBool::new(false));
+    let collected = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let mut tasks = Vec::new();
+
+    if let Some(stdout) = child.stdout.take() {
+        tasks.push(spawn_auth_stream_reader(
+            stdout,
+            app.clone(),
+            host.clone(),
+            emitted.clone(),
+            collected.clone(),
+        ));
+    }
+    if let Some(stderr) = child.stderr.take() {
+        tasks.push(spawn_auth_stream_reader(
+            stderr,
+            app.clone(),
+            host.clone(),
+            emitted,
+            collected.clone(),
+        ));
+    }
+
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Failed waiting for `gh auth login --web`: {}", e))?;
+    for t in tasks {
+        let _ = t.await;
+    }
+
+    if !status.success() {
+        let detail = collected
+            .lock()
+            .map(|lines| lines.join("\n"))
+            .unwrap_or_default();
+        return Err(format!("`gh auth login --web` failed: {}", detail));
+    }
+
+    gh_status().await
+}
+
+/// Pipes `token` to `gh auth login --with-token` via stdin.
+#[tauri::command]
+pub async fn gh_auth_login_token(
+    token: String,
+    hostname: Option<String>,
+) -> Result<GhStatus, String> {
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        return Err("Personal access token must not be empty".to_string());
+    }
+    let host = resolve_hostname(hostname)?;
+    let args = to_args(&["auth", "login", "--with-token", "-h", &host]);
+    run_gh_with_input(&args, &format!("{trimmed}\n"), None).await?;
+    gh_status().await
+}
+
+/// Runs `gh auth logout`.
+#[tauri::command]
+pub async fn gh_auth_logout(hostname: Option<String>) -> Result<GhStatus, String> {
+    let host = resolve_hostname(hostname)?;
+    let args = to_args(&["auth", "logout", "-h", &host]);
+    run_gh(&args, None).await?;
+    gh_status().await
+}
+
+/// Fetches full PR metadata including `body,comments,reviews,files,commits,statusCheckRollup,mergeable,mergeStateStatus`.
+#[tauri::command]
+pub async fn gh_pr_detail(
+    selector: String,
+    repo: Option<String>,
+    cwd: Option<String>,
+) -> Result<Value, String> {
+    let args = build_pr_detail_args(&selector, repo)?;
+    run_gh_json(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+}
+
+pub fn build_pr_detail_args(selector: &str, repo: Option<String>) -> Result<Vec<String>, String> {
+    let sel = selector.trim();
+    selector_arg(sel)?;
+    let mut args = to_args(&["pr", "view", sel]);
+    repo_args(repo, &mut args)?;
+    args.push("--json".into());
+    args.push(PR_DETAIL_FIELDS.into());
+    Ok(args)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrDiffLine {
+    /// `"context" | "add" | "del" | "meta"`
+    pub kind: String,
+    pub content: String,
+    pub old_line: Option<u32>,
+    pub new_line: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrDiffHunk {
+    pub header: String,
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub lines: Vec<PrDiffLine>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrDiffFile {
+    pub path: String,
+    pub old_path: String,
+    pub new_path: String,
+    /// `"added" | "modified" | "deleted" | "renamed"`
+    pub status: String,
+    pub additions: u32,
+    pub deletions: u32,
+    pub is_binary: bool,
+    pub hunks: Vec<PrDiffHunk>,
+}
+
+fn strip_ab_prefix(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches('"');
+    if trimmed == "/dev/null" {
+        return String::new();
+    }
+    trimmed
+        .strip_prefix("a/")
+        .or_else(|| trimmed.strip_prefix("b/"))
+        .unwrap_or(trimmed)
+        .to_string()
+}
+
+fn parse_range(spec: &str) -> Option<(u32, u32)> {
+    let s = spec.strip_prefix('-').or_else(|| spec.strip_prefix('+'))?;
+    if let Some((start, count)) = s.split_once(',') {
+        Some((start.parse().ok()?, count.parse().ok()?))
+    } else {
+        Some((s.parse().ok()?, 1))
+    }
+}
+
+pub fn parse_hunk_header(line: &str) -> Option<(u32, u32, u32, u32)> {
+    let rest = line.strip_prefix("@@ ")?;
+    let (ranges, _) = rest.split_once(" @@")?;
+    let mut parts = ranges.split_whitespace();
+    let (old_start, old_lines) = parse_range(parts.next()?)?;
+    let (new_start, new_lines) = parse_range(parts.next()?)?;
+    Some((old_start, old_lines, new_start, new_lines))
+}
+
+/// Parses unified git diff output from `gh pr diff` into structured per-file hunks and lines.
+pub fn parse_unified_diff(raw: &str) -> Vec<PrDiffFile> {
+    let mut files: Vec<PrDiffFile> = Vec::new();
+    let mut current_file: Option<PrDiffFile> = None;
+    let mut current_hunk: Option<PrDiffHunk> = None;
+    let mut curr_old: u32 = 0;
+    let mut curr_new: u32 = 0;
+
+    let flush_hunk = |file: &mut Option<PrDiffFile>, hunk: &mut Option<PrDiffHunk>| {
+        if let (Some(f), Some(h)) = (file.as_mut(), hunk.take()) {
+            f.hunks.push(h);
+        }
+    };
+
+    let flush_file = |files: &mut Vec<PrDiffFile>,
+                      file: &mut Option<PrDiffFile>,
+                      hunk: &mut Option<PrDiffHunk>| {
+        flush_hunk(file, hunk);
+        if let Some(mut f) = file.take() {
+            if f.path.is_empty() {
+                f.path = if !f.new_path.is_empty() {
+                    f.new_path.clone()
+                } else {
+                    f.old_path.clone()
+                };
+            }
+            files.push(f);
+        }
+    };
+
+    for raw_line in raw.lines() {
+        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+
+        if let Some(rest) = line.strip_prefix("diff --git ") {
+            flush_file(&mut files, &mut current_file, &mut current_hunk);
+            let (old_path, new_path) = if let Some((a_part, b_part)) = rest.split_once(" b/") {
+                (
+                    strip_ab_prefix(a_part),
+                    strip_ab_prefix(&format!("b/{b_part}")),
+                )
+            } else {
+                let mut parts = rest.split_whitespace();
+                let a = parts.next().map(strip_ab_prefix).unwrap_or_default();
+                let b = parts.next().map(strip_ab_prefix).unwrap_or_default();
+                (a, b)
+            };
+            let path = if !new_path.is_empty() {
+                new_path.clone()
+            } else {
+                old_path.clone()
+            };
+            current_file = Some(PrDiffFile {
+                path,
+                old_path,
+                new_path,
+                status: "modified".to_string(),
+                additions: 0,
+                deletions: 0,
+                is_binary: false,
+                hunks: Vec::new(),
+            });
+            continue;
+        }
+
+        if current_hunk.is_none() {
+            if let Some(f) = current_file.as_mut() {
+                if line.starts_with("new file mode ") {
+                    f.status = "added".to_string();
+                    continue;
+                }
+                if line.starts_with("deleted file mode ") {
+                    f.status = "deleted".to_string();
+                    continue;
+                }
+                if let Some(from) = line.strip_prefix("rename from ") {
+                    f.status = "renamed".to_string();
+                    f.old_path = from.trim().to_string();
+                    continue;
+                }
+                if let Some(to) = line.strip_prefix("rename to ") {
+                    f.status = "renamed".to_string();
+                    f.new_path = to.trim().to_string();
+                    f.path = f.new_path.clone();
+                    continue;
+                }
+                if line.starts_with("Binary files ") || line == "GIT binary patch" {
+                    f.is_binary = true;
+                    continue;
+                }
+                if let Some(old_hdr) = line.strip_prefix("--- ") {
+                    let parsed = strip_ab_prefix(old_hdr);
+                    if parsed.is_empty() {
+                        f.status = "added".to_string();
+                    } else {
+                        f.old_path = parsed;
+                    }
+                    continue;
+                }
+                if let Some(new_hdr) = line.strip_prefix("+++ ") {
+                    let parsed = strip_ab_prefix(new_hdr);
+                    if parsed.is_empty() {
+                        f.status = "deleted".to_string();
+                        f.path = f.old_path.clone();
+                    } else {
+                        f.new_path = parsed.clone();
+                        f.path = parsed;
+                    }
+                    continue;
+                }
+            } else if let Some(old_hdr) = line.strip_prefix("--- ") {
+                let old_path = strip_ab_prefix(old_hdr);
+                current_file = Some(PrDiffFile {
+                    path: old_path.clone(),
+                    old_path,
+                    new_path: String::new(),
+                    status: "modified".to_string(),
+                    additions: 0,
+                    deletions: 0,
+                    is_binary: false,
+                    hunks: Vec::new(),
+                });
+                continue;
+            }
+        }
+
+        if line.starts_with("@@ ")
+            && let Some((old_start, old_lines, new_start, new_lines)) = parse_hunk_header(line)
+        {
+            flush_hunk(&mut current_file, &mut current_hunk);
+            curr_old = old_start;
+            curr_new = new_start;
+            current_hunk = Some(PrDiffHunk {
+                header: line.to_string(),
+                old_start,
+                old_lines,
+                new_start,
+                new_lines,
+                lines: Vec::new(),
+            });
+            continue;
+        }
+
+        if let (Some(f), Some(hunk)) = (current_file.as_mut(), current_hunk.as_mut()) {
+            if let Some(content) = line.strip_prefix('+') {
+                let line_no = curr_new;
+                curr_new += 1;
+                f.additions += 1;
+                hunk.lines.push(PrDiffLine {
+                    kind: "add".to_string(),
+                    content: content.to_string(),
+                    old_line: None,
+                    new_line: Some(line_no),
+                });
+            } else if let Some(content) = line.strip_prefix('-') {
+                let line_no = curr_old;
+                curr_old += 1;
+                f.deletions += 1;
+                hunk.lines.push(PrDiffLine {
+                    kind: "del".to_string(),
+                    content: content.to_string(),
+                    old_line: Some(line_no),
+                    new_line: None,
+                });
+            } else if let Some(content) = line.strip_prefix(' ') {
+                let o = curr_old;
+                let n = curr_new;
+                curr_old += 1;
+                curr_new += 1;
+                hunk.lines.push(PrDiffLine {
+                    kind: "context".to_string(),
+                    content: content.to_string(),
+                    old_line: Some(o),
+                    new_line: Some(n),
+                });
+            } else if line.starts_with('\\') {
+                hunk.lines.push(PrDiffLine {
+                    kind: "meta".to_string(),
+                    content: line.to_string(),
+                    old_line: None,
+                    new_line: None,
+                });
+            } else if line.is_empty() {
+                let o = curr_old;
+                let n = curr_new;
+                curr_old += 1;
+                curr_new += 1;
+                hunk.lines.push(PrDiffLine {
+                    kind: "context".to_string(),
+                    content: String::new(),
+                    old_line: Some(o),
+                    new_line: Some(n),
+                });
+            }
+        }
+    }
+
+    flush_file(&mut files, &mut current_file, &mut current_hunk);
+    files
+}
+
+/// Runs `gh pr diff <selector>` and parses unified diff per file.
+#[tauri::command]
+pub async fn gh_pr_diff(
+    selector: String,
+    repo: Option<String>,
+    cwd: Option<String>,
+) -> Result<Vec<PrDiffFile>, String> {
+    let sel = selector.trim();
+    selector_arg(sel)?;
+    let mut args = to_args(&["pr", "diff", sel]);
+    repo_args(repo, &mut args)?;
+    let raw = run_gh(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await?;
+    Ok(parse_unified_diff(&raw))
+}
+
+pub fn review_comments_endpoint(repo: Option<&str>, pr_number: u64) -> Result<String, String> {
+    if pr_number == 0 {
+        return Err("Invalid PR number: 0".to_string());
+    }
+    match repo.map(str::trim).filter(|r| !r.is_empty()) {
+        Some(r) => {
+            if !is_valid_repo_slug(r) {
+                return Err(format!("Invalid repository: {}", r));
+            }
+            Ok(format!("repos/{r}/pulls/{pr_number}/comments"))
+        }
+        None => Ok(format!(
+            "repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments"
+        )),
+    }
+}
+
+pub fn reviews_endpoint(repo: Option<&str>, pr_number: u64) -> Result<String, String> {
+    if pr_number == 0 {
+        return Err("Invalid PR number: 0".to_string());
+    }
+    match repo.map(str::trim).filter(|r| !r.is_empty()) {
+        Some(r) => {
+            if !is_valid_repo_slug(r) {
+                return Err(format!("Invalid repository: {}", r));
+            }
+            Ok(format!("repos/{r}/pulls/{pr_number}/reviews"))
+        }
+        None => Ok(format!(
+            "repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews"
+        )),
+    }
+}
+
+/// Runs `gh api repos/{owner}/{repo}/pulls/{number}/comments` to list inline file review threads.
+#[tauri::command]
+pub async fn gh_pr_review_comments(
+    repo: Option<String>,
+    pr_number: u64,
+    cwd: Option<String>,
+) -> Result<Value, String> {
+    let endpoint = review_comments_endpoint(repo.as_deref(), pr_number)?;
+    let args = to_args(&["api", &endpoint]);
+    run_gh_json(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+}
+
+pub fn build_pr_comment_args(
+    selector: &str,
+    body: &str,
+    repo: Option<String>,
+) -> Result<Vec<String>, String> {
+    let sel = selector.trim();
+    selector_arg(sel)?;
+    let trimmed_body = body.trim();
+    if trimmed_body.is_empty() {
+        return Err("Comment body must not be empty".to_string());
+    }
+    let mut args = to_args(&["pr", "comment", sel, "--body", trimmed_body]);
+    repo_args(repo, &mut args)?;
+    Ok(args)
+}
+
+/// Runs `gh pr comment <selector> --body <body>`.
+#[tauri::command]
+pub async fn gh_pr_comment(
+    selector: String,
+    body: String,
+    repo: Option<String>,
+    cwd: Option<String>,
+) -> Result<String, String> {
+    let args = build_pr_comment_args(&selector, &body, repo)?;
+    run_gh(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrReviewDraftComment {
+    pub path: String,
+    pub line: u32,
+    #[serde(default)]
+    pub side: Option<String>,
+    pub body: String,
+}
+
+pub fn build_pr_review_args(
+    selector: &str,
+    event: &str,
+    body: Option<&str>,
+    repo: Option<String>,
+) -> Result<Vec<String>, String> {
+    let sel = selector.trim();
+    selector_arg(sel)?;
+    let ev = event.trim().to_ascii_uppercase();
+    let trimmed_body = body.map(str::trim).filter(|b| !b.is_empty());
+
+    let flag = match ev.as_str() {
+        "APPROVE" => "--approve",
+        "REQUEST_CHANGES" => {
+            if trimmed_body.is_none() {
+                return Err("Requesting changes requires a review comment body".to_string());
+            }
+            "--request-changes"
+        }
+        "COMMENT" => {
+            if trimmed_body.is_none() {
+                return Err("Submitting a comment review requires a body".to_string());
+            }
+            "--comment"
+        }
+        other => return Err(format!("Invalid review event: {}", other)),
+    };
+
+    let mut args = to_args(&["pr", "review", sel, flag]);
+    if let Some(b) = trimmed_body {
+        args.push("--body".into());
+        args.push(b.to_string());
+    }
+    repo_args(repo, &mut args)?;
+    Ok(args)
+}
+
+pub fn build_pr_review_api_payload(
+    event: &str,
+    body: Option<&str>,
+    comments: &[PrReviewDraftComment],
+) -> Result<Value, String> {
+    let ev = event.trim().to_ascii_uppercase();
+    if !matches!(ev.as_str(), "APPROVE" | "REQUEST_CHANGES" | "COMMENT") {
+        return Err(format!("Invalid review event: {}", event));
+    }
+    if comments.is_empty() {
+        return Err("Inline comments list must not be empty for API payload".to_string());
+    }
+    let mut serialized_comments = Vec::with_capacity(comments.len());
+    for c in comments {
+        let path = c.path.trim();
+        let comment_body = c.body.trim();
+        if path.is_empty() {
+            return Err("Inline review comment path must not be empty".to_string());
+        }
+        if c.line == 0 {
+            return Err("Inline review comment line must be >= 1".to_string());
+        }
+        if comment_body.is_empty() {
+            return Err("Inline review comment body must not be empty".to_string());
+        }
+        let side = c
+            .side
+            .as_deref()
+            .map(|s| s.trim().to_ascii_uppercase())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "RIGHT".to_string());
+        if !matches!(side.as_str(), "LEFT" | "RIGHT") {
+            return Err(format!("Invalid diff side: {}", side));
+        }
+        serialized_comments.push(json!({
+            "path": path,
+            "line": c.line,
+            "side": side,
+            "body": comment_body,
+        }));
+    }
+
+    Ok(json!({
+        "event": ev,
+        "body": body.map(str::trim).unwrap_or(""),
+        "comments": serialized_comments,
+    }))
+}
+
+/// Submits a PR review (`APPROVE`, `REQUEST_CHANGES`, `COMMENT`), either via
+/// `gh pr review` or via `gh api --method POST repos/{owner}/{repo}/pulls/{number}/reviews --input -`
+/// when inline file `comments` are included.
+#[tauri::command]
+pub async fn gh_pr_submit_review(
+    selector: String,
+    event: String,
+    body: Option<String>,
+    comments: Option<Vec<PrReviewDraftComment>>,
+    repo: Option<String>,
+    cwd: Option<String>,
+) -> Result<Value, String> {
+    let resolved_cwd = resolve_cwd(cwd.as_deref())?;
+    let inline = comments.unwrap_or_default();
+
+    if inline.is_empty() {
+        let args = build_pr_review_args(&selector, &event, body.as_deref(), repo)?;
+        let out = run_gh(&args, resolved_cwd.as_deref()).await?;
+        return Ok(Value::String(out));
+    }
+
+    let sel = selector.trim();
+    selector_arg(sel)?;
+    let pr_number: u64 = if let Ok(n) = sel.parse::<u64>() {
+        n
+    } else {
+        let mut view_args = to_args(&["pr", "view", sel]);
+        repo_args(repo.clone(), &mut view_args)?;
+        view_args.push("--json".into());
+        view_args.push("number".into());
+        let val = run_gh_json(&view_args, resolved_cwd.as_deref()).await?;
+        val.get("number")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("Could not resolve PR number for selector `{}`", sel))?
+    };
+
+    let endpoint = reviews_endpoint(repo.as_deref(), pr_number)?;
+    let payload = build_pr_review_api_payload(&event, body.as_deref(), &inline)?;
+    let payload_str =
+        serde_json::to_string(&payload).map_err(|e| format!("Serialize review payload: {e}"))?;
+    let args = to_args(&["api", "--method", "POST", &endpoint, "--input", "-"]);
+    let out = run_gh_with_input(&args, &payload_str, resolved_cwd.as_deref()).await?;
+    if out.is_empty() {
+        Ok(Value::Null)
+    } else {
+        Ok(serde_json::from_str(&out).unwrap_or(Value::String(out)))
+    }
+}
+
+pub fn build_pr_merge_args(
+    selector: &str,
+    method: &str,
+    delete_branch: bool,
+    subject: Option<&str>,
+    body: Option<&str>,
+    repo: Option<String>,
+) -> Result<Vec<String>, String> {
+    let sel = selector.trim();
+    selector_arg(sel)?;
+    let method_flag = match method.trim().to_ascii_lowercase().as_str() {
+        "merge" => "--merge",
+        "squash" => "--squash",
+        "rebase" => "--rebase",
+        other => return Err(format!("Invalid merge method: {}", other)),
+    };
+    let mut args = to_args(&["pr", "merge", sel, method_flag]);
+    if delete_branch {
+        args.push("--delete-branch".into());
+    }
+    if let Some(s) = subject.map(str::trim).filter(|s| !s.is_empty()) {
+        args.push("--subject".into());
+        args.push(s.to_string());
+    }
+    if let Some(b) = body.map(str::trim).filter(|b| !b.is_empty()) {
+        args.push("--body".into());
+        args.push(b.to_string());
+    }
+    repo_args(repo, &mut args)?;
+    Ok(args)
+}
+
+/// Runs `gh pr merge <selector> --<merge|squash|rebase>` (plus `--delete-branch` when selected).
+#[tauri::command]
+pub async fn gh_pr_merge(
+    selector: String,
+    method: String,
+    delete_branch: Option<bool>,
+    subject: Option<String>,
+    body: Option<String>,
+    repo: Option<String>,
+    cwd: Option<String>,
+) -> Result<String, String> {
+    let args = build_pr_merge_args(
+        &selector,
+        &method,
+        delete_branch.unwrap_or(false),
+        subject.as_deref(),
+        body.as_deref(),
+        repo,
+    )?;
+    run_gh(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -448,5 +1330,216 @@ mod tests {
             Some("2.103.3".to_string())
         );
         assert_eq!(parse_version("garbage"), None);
+    }
+
+    #[test]
+    fn parses_device_code_from_gh_output() {
+        assert_eq!(
+            parse_device_code("! First copy your one-time code: AB12-CD34\nPress Enter"),
+            Some("AB12-CD34".to_string())
+        );
+        assert_eq!(
+            parse_device_code("Use code 9F8E-7D6C to authenticate."),
+            Some("9F8E-7D6C".to_string())
+        );
+        assert_eq!(parse_device_code("no code here 123-456"), None);
+    }
+
+    #[test]
+    fn validates_hostnames_and_scopes() {
+        assert!(is_valid_hostname("github.com"));
+        assert!(is_valid_hostname("ghe.example.internal"));
+        assert!(!is_valid_hostname("-bad.com"));
+        assert!(!is_valid_hostname("localhost"));
+        assert!(!is_valid_hostname("github.com/evil"));
+
+        assert_eq!(
+            validate_scopes(Some(vec!["repo".into(), "read:org".into()])).unwrap(),
+            Some("repo,read:org".to_string())
+        );
+        assert!(validate_scopes(Some(vec!["repo;--bad".into()])).is_err());
+    }
+
+    #[test]
+    fn builds_pr_list_and_detail_args() {
+        let args = build_pr_list_args(
+            Some("Steven-Harris/pipan".into()),
+            Some("open".into()),
+            Some("is:open assignee:@me".into()),
+            Some(25),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            v(&[
+                "pr",
+                "list",
+                "--repo",
+                "Steven-Harris/pipan",
+                "--state",
+                "open",
+                "--limit",
+                "25",
+                "--search",
+                "is:open assignee:@me",
+                "--json",
+                PR_LIST_FIELDS,
+            ])
+        );
+
+        let detail_args = build_pr_detail_args("42", Some("Steven-Harris/pipan".into())).unwrap();
+        assert_eq!(
+            detail_args,
+            v(&[
+                "pr",
+                "view",
+                "42",
+                "--repo",
+                "Steven-Harris/pipan",
+                "--json",
+                PR_DETAIL_FIELDS,
+            ])
+        );
+        assert!(build_pr_detail_args("--bad", None).is_err());
+    }
+
+    #[test]
+    fn parses_unified_diff_into_files_hunks_and_line_numbers() {
+        let sample = "\
+diff --git a/src/main.rs b/src/main.rs
+index 1111111..2222222 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -10,4 +10,5 @@ fn main() {
+     let a = 1;
+-    let b = 2;
++    let b = 20;
++    let c = 30;
+     println!(\"{a}\");
+diff --git a/src/new.rs b/src/new.rs
+new file mode 100644
+--- /dev/null
++++ b/src/new.rs
+@@ -0,0 +1,2 @@
++pub fn hello() {}
++pub fn world() {}
+";
+        let files = parse_unified_diff(sample);
+        assert_eq!(files.len(), 2);
+
+        let f0 = &files[0];
+        assert_eq!(f0.path, "src/main.rs");
+        assert_eq!(f0.status, "modified");
+        assert_eq!(f0.additions, 2);
+        assert_eq!(f0.deletions, 1);
+        assert_eq!(f0.hunks.len(), 1);
+
+        let h0 = &f0.hunks[0];
+        assert_eq!(h0.old_start, 10);
+        assert_eq!(h0.new_start, 10);
+        assert_eq!(h0.lines.len(), 5);
+        assert_eq!(h0.lines[0].kind, "context");
+        assert_eq!(h0.lines[0].old_line, Some(10));
+        assert_eq!(h0.lines[0].new_line, Some(10));
+        assert_eq!(h0.lines[1].kind, "del");
+        assert_eq!(h0.lines[1].old_line, Some(11));
+        assert_eq!(h0.lines[1].new_line, None);
+        assert_eq!(h0.lines[2].kind, "add");
+        assert_eq!(h0.lines[2].old_line, None);
+        assert_eq!(h0.lines[2].new_line, Some(11));
+        assert_eq!(h0.lines[3].kind, "add");
+        assert_eq!(h0.lines[3].new_line, Some(12));
+        assert_eq!(h0.lines[4].kind, "context");
+        assert_eq!(h0.lines[4].old_line, Some(12));
+        assert_eq!(h0.lines[4].new_line, Some(13));
+
+        let f1 = &files[1];
+        assert_eq!(f1.path, "src/new.rs");
+        assert_eq!(f1.status, "added");
+        assert_eq!(f1.additions, 2);
+        assert_eq!(f1.deletions, 0);
+    }
+
+    #[test]
+    fn builds_pr_comment_review_and_merge_commands() {
+        let comment =
+            build_pr_comment_args("15", "Looks great!", Some("Steven-Harris/pipan".into()))
+                .unwrap();
+        assert_eq!(
+            comment,
+            v(&[
+                "pr",
+                "comment",
+                "15",
+                "--body",
+                "Looks great!",
+                "--repo",
+                "Steven-Harris/pipan"
+            ])
+        );
+        assert!(build_pr_comment_args("15", "   ", None).is_err());
+
+        let approve = build_pr_review_args("15", "APPROVE", None, None).unwrap();
+        assert_eq!(approve, v(&["pr", "review", "15", "--approve"]));
+
+        let req_changes =
+            build_pr_review_args("15", "REQUEST_CHANGES", Some("Please fix tests"), None).unwrap();
+        assert_eq!(
+            req_changes,
+            v(&[
+                "pr",
+                "review",
+                "15",
+                "--request-changes",
+                "--body",
+                "Please fix tests"
+            ])
+        );
+        assert!(build_pr_review_args("15", "REQUEST_CHANGES", None, None).is_err());
+
+        let payload = build_pr_review_api_payload(
+            "COMMENT",
+            Some("Inline feedback"),
+            &[PrReviewDraftComment {
+                path: "src/lib.rs".into(),
+                line: 42,
+                side: Some("RIGHT".into()),
+                body: "Nit: rename variable".into(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(payload["event"], "COMMENT");
+        assert_eq!(payload["body"], "Inline feedback");
+        assert_eq!(payload["comments"][0]["path"], "src/lib.rs");
+        assert_eq!(payload["comments"][0]["line"], 42);
+        assert_eq!(payload["comments"][0]["side"], "RIGHT");
+
+        let merge = build_pr_merge_args(
+            "15",
+            "squash",
+            true,
+            Some("feat: ship it"),
+            Some("Detailed body"),
+            Some("Steven-Harris/pipan".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            merge,
+            v(&[
+                "pr",
+                "merge",
+                "15",
+                "--squash",
+                "--delete-branch",
+                "--subject",
+                "feat: ship it",
+                "--body",
+                "Detailed body",
+                "--repo",
+                "Steven-Harris/pipan"
+            ])
+        );
+        assert!(build_pr_merge_args("15", "fast-forward", false, None, None, None).is_err());
     }
 }

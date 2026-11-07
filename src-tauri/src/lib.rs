@@ -16,12 +16,14 @@ use agent::{
 };
 
 use db::{
-    Database, clear_node_positions, get_graph_direction, load_node_positions, save_node_positions,
-    set_graph_direction,
+    Database, clear_node_positions, delete_github_view, get_graph_direction, list_github_views,
+    load_node_positions, save_github_view, save_node_positions, set_graph_direction,
 };
 use files::read_file_attachment;
 use github::{
-    gh_issue_list, gh_json, gh_pr_checks, gh_pr_list, gh_pr_view, gh_run_list, gh_status,
+    gh_auth_login_token, gh_auth_login_web, gh_auth_logout, gh_issue_list, gh_json, gh_pr_checks,
+    gh_pr_comment, gh_pr_detail, gh_pr_diff, gh_pr_list, gh_pr_merge, gh_pr_review_comments,
+    gh_pr_submit_review, gh_pr_view, gh_run_list, gh_status,
 };
 use models::list_configured_models;
 use skills::list_installed_skills;
@@ -78,9 +80,18 @@ pub fn run() {
             resolve_approval,
             list_pending_approvals,
             gh_status,
+            gh_auth_login_web,
+            gh_auth_login_token,
+            gh_auth_logout,
             gh_json,
             gh_pr_view,
             gh_pr_list,
+            gh_pr_detail,
+            gh_pr_diff,
+            gh_pr_review_comments,
+            gh_pr_comment,
+            gh_pr_submit_review,
+            gh_pr_merge,
             gh_pr_checks,
             gh_issue_list,
             gh_run_list,
@@ -92,6 +103,9 @@ pub fn run() {
             load_node_positions,
             save_node_positions,
             clear_node_positions,
+            list_github_views,
+            save_github_view,
+            delete_github_view,
             list_saved_sessions,
             save_session_metadata,
             rename_session,

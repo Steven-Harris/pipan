@@ -8,6 +8,7 @@
 //! persistent-sessions phase extends it) and `node_positions`.
 //! Version 2 (persistent sessions): extends `sessions` with full session metadata,
 //! adds `session_tags`, and creates indexes for search/filter/sort queries.
+//! Version 3 (github integration): adds `github_views` for custom saved PR search views.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -65,7 +66,26 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_sessions_archived ON sessions(archived);
     CREATE INDEX idx_sessions_cwd ON sessions(cwd);
     CREATE INDEX idx_session_tags_tag ON session_tags(tag);",
+    // v3: persistent custom GitHub PR search views.
+    "CREATE TABLE github_views (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        query       TEXT NOT NULL,
+        sort_order  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_github_views_sort_order ON github_views(sort_order);",
 ];
+
+/// A saved custom GitHub PR search view persisted in `github_views`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubView {
+    pub id: String,
+    pub name: String,
+    pub query: String,
+    #[serde(default, alias = "sort_order")]
+    pub sort_order: i64,
+}
 
 /// A node coordinate as stored per `(session, direction)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -215,6 +235,77 @@ impl Database {
         .map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    /// Lists all custom GitHub PR search views ordered by `sort_order`, then `name`.
+    pub fn list_github_views(&self) -> Result<Vec<GithubView>, String> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, query, sort_order
+                 FROM github_views
+                 ORDER BY sort_order ASC, name ASC, id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(GithubView {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    query: row.get(2)?,
+                    sort_order: row.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Creates or updates a custom GitHub PR search view.
+    pub fn save_github_view(&self, view: &GithubView) -> Result<GithubView, String> {
+        let id = view.id.trim();
+        let name = view.name.trim();
+        let query = view.query.trim();
+        if id.is_empty() {
+            return Err("GitHub view id must not be empty".to_string());
+        }
+        if name.is_empty() {
+            return Err("GitHub view name must not be empty".to_string());
+        }
+        if query.is_empty() {
+            return Err("GitHub view query must not be empty".to_string());
+        }
+        let saved = GithubView {
+            id: id.to_string(),
+            name: name.to_string(),
+            query: query.to_string(),
+            sort_order: view.sort_order,
+        };
+        let conn = self.lock();
+        conn.execute(
+            "INSERT INTO github_views (id, name, query, sort_order)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET
+                 name = excluded.name,
+                 query = excluded.query,
+                 sort_order = excluded.sort_order",
+            params![saved.id, saved.name, saved.query, saved.sort_order],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(saved)
+    }
+
+    /// Deletes a custom GitHub PR search view by `id`.
+    pub fn delete_github_view(&self, id: &str) -> Result<bool, String> {
+        let trimmed = id.trim();
+        if trimmed.is_empty() {
+            return Err("GitHub view id must not be empty".to_string());
+        }
+        let conn = self.lock();
+        let deleted = conn
+            .execute("DELETE FROM github_views WHERE id = ?1", params![trimmed])
+            .map_err(|e| e.to_string())?;
+        Ok(deleted > 0)
+    }
 }
 
 fn check_direction(direction: &str) -> Result<(), String> {
@@ -301,6 +392,33 @@ pub async fn clear_node_positions(
 ) -> Result<(), String> {
     let db = db.inner().clone();
     tokio::task::spawn_blocking(move || db.clear_node_positions(&session_id, &direction))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn list_github_views(db: State<'_, Database>) -> Result<Vec<GithubView>, String> {
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.list_github_views())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn save_github_view(
+    db: State<'_, Database>,
+    view: GithubView,
+) -> Result<GithubView, String> {
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.save_github_view(&view))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_github_view(db: State<'_, Database>, id: String) -> Result<bool, String> {
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.delete_github_view(&id))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -415,5 +533,72 @@ mod tests {
 
         drop(db);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn github_views_crud_and_ordering() {
+        let db = Database::open_in_memory().unwrap();
+        assert!(db.list_github_views().unwrap().is_empty());
+
+        let v1 = db
+            .save_github_view(&GithubView {
+                id: "view-bugs".into(),
+                name: "Bug PRs".into(),
+                query: "is:open label:bug draft:false".into(),
+                sort_order: 20,
+            })
+            .unwrap();
+        assert_eq!(v1.name, "Bug PRs");
+
+        db.save_github_view(&GithubView {
+            id: "view-urgent".into(),
+            name: "Urgent".into(),
+            query: "is:open label:urgent".into(),
+            sort_order: 10,
+        })
+        .unwrap();
+
+        let listed = db.list_github_views().unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].id, "view-urgent");
+        assert_eq!(listed[1].id, "view-bugs");
+
+        // Update existing view
+        db.save_github_view(&GithubView {
+            id: "view-bugs".into(),
+            name: "All Bug PRs".into(),
+            query: "is:pr label:bug".into(),
+            sort_order: 5,
+        })
+        .unwrap();
+
+        let listed = db.list_github_views().unwrap();
+        assert_eq!(listed[0].id, "view-bugs");
+        assert_eq!(listed[0].name, "All Bug PRs");
+        assert_eq!(listed[0].query, "is:pr label:bug");
+
+        // Validation
+        assert!(
+            db.save_github_view(&GithubView {
+                id: "".into(),
+                name: "x".into(),
+                query: "is:open".into(),
+                sort_order: 0,
+            })
+            .is_err()
+        );
+        assert!(
+            db.save_github_view(&GithubView {
+                id: "x".into(),
+                name: "   ".into(),
+                query: "is:open".into(),
+                sort_order: 0,
+            })
+            .is_err()
+        );
+
+        assert!(db.delete_github_view("view-bugs").unwrap());
+        assert!(!db.delete_github_view("view-bugs").unwrap());
+        assert_eq!(db.list_github_views().unwrap().len(), 1);
     }
 }

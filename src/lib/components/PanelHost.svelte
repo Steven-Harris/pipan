@@ -5,6 +5,7 @@
   import { PANEL_BY_ID } from '#lib/workspace/panels.ts';
   import FlowCanvas from './FlowCanvas.svelte';
   import PanelPlaceholder from './PanelPlaceholder.svelte';
+  import PullRequestsPanel from './PullRequestsPanel.svelte';
 
   function onTabKeydown(e: KeyboardEvent) {
     const ids = workspaceStore.openPanels;
@@ -76,6 +77,8 @@
         <SvelteFlowProvider>
           <FlowCanvas />
         </SvelteFlowProvider>
+      {:else if id === 'prs'}
+        <PullRequestsPanel />
       {:else}
         <PanelPlaceholder {id} />
       {/if}
