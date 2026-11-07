@@ -8,11 +8,11 @@ web
 
 ## Users
 
-Software engineers and AI-assisted developers (inferred from `PLAN.md` and codebase) who run and supervise `pi` coding agent sessions against local repositories and GitHub pull requests, needing real-time telemetry, live steering, and strict workspace isolation without mutating their working tree directly.
+Software engineers and AI-assisted developers (inferred from `plan/` and codebase) who run and supervise `pi` coding agent sessions against local repositories and GitHub pull requests, needing real-time telemetry, live steering, and strict workspace isolation without mutating their working tree directly.
 
 ## Product Purpose
 
-`pipan` is a desktop GUI wrapper and orchestration workspace for the `pi` AI coding agent built with Tauri and Svelte 5. It turns the `pi` CLI into an inspectable, steerable desktop environment—currently providing live streaming chat, reasoning inspection, tool-call execution cards, mid-flight steering/follow-up queues, and stderr diagnostics, with planned expansion (`PLAN.md`) into a living DAG orchestration canvas and GitHub PR/webhook integration.
+`pipan` is a desktop GUI wrapper and orchestration workspace for the `pi` AI coding agent built with Tauri and Svelte 5. It turns the `pi` CLI into an inspectable, steerable desktop environment—currently providing live streaming chat, reasoning inspection, tool-call execution cards, mid-flight steering/follow-up queues, and stderr diagnostics, with planned expansion (`plan/`) into a living DAG orchestration canvas and GitHub PR/webhook integration.
 
 Success means developers can launch isolated or directory-bound `pi` sessions, see every thought, tool invocation, and subagent branch in real time, and intervene (steer, queue follow-ups, abort, or approve gated actions) without losing context or risking unapproved host-repo mutations.
 
@@ -39,15 +39,15 @@ Unlike terminal-only CLI harnesses or opaque chat wrappers, `pipan` pairs direct
   - `ChatInput.svelte`: Context-aware composer that switches from `Send` when idle to live `Steer`, `Follow-up`, and `Stop` (`clear_queue` + `abort`) controls while the agent is running, with visual queue pills above the input.
   - Collapsible `Pi Diagnostics` stderr drawer and dismissible error banner in `src/routes/+page.svelte`.
 
-### Architectural Constraints (`PLAN.md` & Codebase)
+### Architectural Constraints (`plan/` & Codebase)
 - **Strict JSON RPC Communication:** Communicate with `pi` exclusively as a sidecar process over JSON RPC (`stdin`/`stdout`), never by scraping a pseudo-terminal.
 - **No MCP Servers for GitHub:** All planned GitHub integration must execute directly via `gh` CLI and local webhook forwarding (`gh webhook forward`), never via MCP servers or REST polling loops.
 - **Workspace Isolation:** Planned multi-session architecture requires every agent session to run inside an isolated `git worktree` so the host repository is never mutated directly without review.
-- **Tech Stack:** Tauri v2 (Rust, `tokio`, `serde_json`), Svelte 5 (Runes, SvelteKit static adapter), Tailwind CSS v4, TypeScript, and `lucide-svelte` (with `@xyflow/svelte` and `dagre` planned in `PLAN.md` for Phase 4).
+- **Tech Stack:** Tauri v2 (Rust, `tokio`, `serde_json`), Svelte 5 (Runes, SvelteKit static adapter), Tailwind CSS v4, TypeScript, and `lucide-svelte` (with `@xyflow/svelte` and `dagre` planned in `plan/` for Phase 4).
 
 ### Open / Undecided Product Decisions
-- **Primary Surface Hierarchy (Inferred / Pending Confirmation):** How the existing full-screen chat/steering transcript (`src/routes/+page.svelte`) will coexist with the planned Phase 4 Svelte Flow DAG canvas (`PLAN.md` specifies a sidebar for history/PRs, main canvas for the Svelte Flow dashboard, and bottom drawer for chat/steering input).
-- **Destructive Action Interception Mechanism:** Exact RPC protocol hook or extension mechanism for pausing `pi` on destructive operations (`ApprovalNode` in Phase 5 of `PLAN.md`).
+- **Primary Surface Hierarchy (Inferred / Pending Confirmation):** How the existing full-screen chat/steering transcript (`src/routes/+page.svelte`) will coexist with the planned Phase 4 Svelte Flow DAG canvas (`plan/` specifies a sidebar for history/PRs, main canvas for the Svelte Flow dashboard, and bottom drawer for chat/steering input).
+- **Destructive Action Interception Mechanism:** Exact RPC protocol hook or extension mechanism for pausing `pi` on destructive operations (`ApprovalNode` in Phase 5 of `plan/`).
 
 ## Brand Commitments
 
@@ -55,7 +55,7 @@ Unlike terminal-only CLI harnesses or opaque chat wrappers, `pipan` pairs direct
 
 ## Evidence on Hand
 
-- `PLAN.md`: Five-phase architectural roadmap covering Tauri scaffolding, Pi RPC & Git worktrees, `gh` CLI & webhook tunnel, Svelte Flow living dashboard (`OrchestratorNode`, `WorkerNode`, `ActionNode`, `ApprovalNode`), and interactive steering/review.
+- `plan/`: Five-phase architectural roadmap covering Tauri scaffolding, Pi RPC & Git worktrees, `gh` CLI & webhook tunnel, Svelte Flow living dashboard (`OrchestratorNode`, `WorkerNode`, `ActionNode`, `ApprovalNode`), and interactive steering/review.
 - `src-tauri/src/pi_rpc.rs` & `src-tauri/src/lib.rs`: Working Rust sidecar process manager and Tauri command handlers (`start_pi_session`, `stop_pi_session`, `send_pi_command`, `get_pi_status`).
 - `src/lib/stores/chat.svelte.ts` & `src/lib/types/pi.ts`: Complete client-side RPC protocol types and reactive state machine.
 - `src/routes/+page.svelte` & `src/lib/components/*.svelte`: Working dark-mode (`zinc-950` / `indigo` / `emerald` / `amber` / `rose`) chat and telemetry inspector UI.
