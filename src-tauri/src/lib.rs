@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod approval;
+pub mod db;
 pub mod github;
 pub mod pi_rpc;
 pub mod webhook;
@@ -10,6 +11,10 @@ use agent::{
     send_agent_command, spawn_agent_session, stop_agent_session,
 };
 
+use db::{
+    Database, clear_node_positions, get_graph_direction, load_node_positions, save_node_positions,
+    set_graph_direction,
+};
 use github::{
     gh_issue_list, gh_json, gh_pr_checks, gh_pr_list, gh_pr_view, gh_run_list, gh_status,
 };
@@ -25,6 +30,23 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let db = app
+                .path()
+                .app_local_data_dir()
+                .map_err(|e| e.to_string())
+                .and_then(|dir| {
+                    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+                    Database::open(&dir.join("pipan.db"))
+                })
+                .unwrap_or_else(|err| {
+                    // Keep the app usable; graph layout just won't survive a restart.
+                    eprintln!("pipan: could not open pipan.db ({err}); using an in-memory store");
+                    Database::open_in_memory().expect("in-memory sqlite")
+                });
+            app.manage(db);
+            Ok(())
+        })
         .manage(PiRpcManager::new())
         .manage(AgentManager::new())
         .manage(WebhookManager::new())
@@ -48,7 +70,12 @@ pub fn run() {
             gh_run_list,
             start_webhook_forwarder,
             stop_webhook_forwarder,
-            get_webhook_forwarder
+            get_webhook_forwarder,
+            get_graph_direction,
+            set_graph_direction,
+            load_node_positions,
+            save_node_positions,
+            clear_node_positions
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { X } from 'lucide-svelte';
+  import { SvelteFlowProvider } from '@xyflow/svelte';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { PANEL_BY_ID } from '#lib/workspace/panels.ts';
   import FlowCanvas from './FlowCanvas.svelte';
@@ -72,7 +73,9 @@
       class="relative flex min-h-0 flex-1 flex-col"
     >
       {#if id === 'nodes'}
-        <FlowCanvas />
+        <SvelteFlowProvider>
+          <FlowCanvas />
+        </SvelteFlowProvider>
       {:else}
         <PanelPlaceholder {id} />
       {/if}

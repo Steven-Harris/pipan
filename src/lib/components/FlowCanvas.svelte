@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, tick, untrack } from 'svelte';
   import {
     SvelteFlow,
     Background,
@@ -7,13 +8,15 @@
     MiniMap,
     Panel,
     MarkerType,
+    useSvelteFlow,
     type Edge,
     type NodeTypes
   } from '@xyflow/svelte';
   import {
     GitFork,
-    ArrowDownUp,
-    ArrowLeftRight,
+    ArrowDown,
+    ArrowRight,
+    RotateCcw,
     X,
     Terminal,
     FolderOpen,
@@ -22,7 +25,14 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { flowStore } from '#lib/stores/flow.svelte.ts';
-  import { layoutGraph, type FlowNode, type LayoutDirection } from '#lib/flow/layout.ts';
+  import { graphLayoutStore } from '#lib/stores/graph-layout.svelte.ts';
+  import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
+  import {
+    layoutGraph,
+    estimatedSize,
+    type FlowNode,
+    type LayoutDirection
+  } from '#lib/flow/layout.ts';
   import { ORCHESTRATOR_NODE_ID, summarizeToolArgs } from '#lib/flow/telemetry.ts';
   import type { FlowNodeMeta } from '#lib/types/pi.ts';
   import FlowNodeCard from './FlowNodeCard.svelte';
@@ -41,11 +51,27 @@
     approval: ApprovalNode
   };
 
-  let layoutDirection = $state<LayoutDirection>('TB');
   let nodes = $state.raw<PipanNode[]>([]);
   let edges = $state.raw<Edge[]>([]);
+  let canvasWidth = $state(0);
+  let canvasHeight = $state(0);
 
-  function buildOrchestrationGraph(direction: 'TB' | 'LR'): {
+  const flow = useSvelteFlow();
+
+  const FIT_OPTIONS = { padding: 0.16, maxZoom: 1.0, duration: 200 } as const;
+
+  const sessionId = $derived(chatStore.activeSessionId);
+  // An explicit user choice always wins; otherwise the split orientation decides.
+  const layoutDirection = $derived(
+    graphLayoutStore.directionFor(sessionId, workspaceStore.orientation)
+  );
+  const pinnedCount = $derived(
+    Object.values(graphLayoutStore.positionsFor(sessionId, layoutDirection)).filter(
+      (p) => p.pinned !== false
+    ).length
+  );
+
+  function buildOrchestrationGraph(): {
     nodes: PipanNode[];
     edges: Edge[];
   } {
@@ -307,37 +333,134 @@
     }
     builtEdges.push(...flowStore.edges);
 
-    // Dagre re-ranks the whole DAG top-to-bottom whenever any node is added.
-    return layoutGraph(builtNodes, builtEdges, direction);
+    // Positions are assigned by the layout pass in `applyGraph`, not here.
+    return { nodes: builtNodes, edges: builtEdges };
   }
 
-  // Reactive effect to recompute DAG layout when telemetry or layout direction changes
+  // The canvas unmounts with its panel tab, so saved layout is read from the store
+  // (hydrated from pipan.db) before the first layout of a session is placed.
   $effect(() => {
-    const _dir = layoutDirection;
-    const _state = chatStore.sessionStatus.state;
-    const _pid = chatStore.sessionStatus.pid;
-    const _running = chatStore.isAgentRunning;
-    const _model = chatStore.modelInfo?.id;
-    const _selected = chatStore.selectedNodeId;
-    const _msgCount = chatStore.messages.length;
-    const lastMsg = chatStore.messages[_msgCount - 1];
-    const _blockCount = lastMsg?.blocks.length ?? 0;
-    const lastBlock = lastMsg?.blocks[_blockCount - 1];
-    const _delta =
-      lastBlock?.type === 'text'
-        ? lastBlock.text.length
-        : lastBlock?.type === 'thinking'
-          ? lastBlock.thinking.length
-          : lastBlock?.type === 'tool_call'
-            ? (lastBlock.resultOutput?.length ?? 0) +
-              (lastBlock.partialOutput?.length ?? 0) +
-              lastBlock.status.length
-            : 0;
-
-    const layouted = buildOrchestrationGraph(_dir);
-    nodes = layouted.nodes;
-    edges = layouted.edges;
+    graphLayoutStore.hydrate(sessionId);
   });
+
+  /**
+   * Structural key: changes only when the graph's shape or layout inputs change (node or
+   * edge added/removed, session, direction, Reset Layout). Streaming text, thinking and
+   * tool status deltas never alter it, so they never re-run dagre.
+   */
+  let lastStructureKey = '';
+  let mounted = false;
+
+  onMount(() => {
+    mounted = true;
+    return () => {
+      mounted = false;
+    };
+  });
+
+  $effect(() => {
+    const sid = sessionId;
+    const dir = layoutDirection;
+    if (!graphLayoutStore.isReady(sid)) return;
+    const epoch = graphLayoutStore.epoch;
+    const pinned = graphLayoutStore.positionsFor(sid, dir);
+    // Reads (and so subscribes to) every chat/flow field the nodes display.
+    const built = buildOrchestrationGraph();
+    untrack(() => applyGraph(built, `${sid ?? ''}|${dir}|${epoch}`, dir, pinned));
+  });
+
+  function applyGraph(
+    built: { nodes: PipanNode[]; edges: Edge[] },
+    context: string,
+    dir: LayoutDirection,
+    pinned: ReturnType<typeof graphLayoutStore.positionsFor>
+  ) {
+    const structureKey = [
+      context,
+      built.nodes.map((n) => n.id).join(','),
+      built.edges.map((e) => e.id).join(',')
+    ].join('\n');
+
+    if (structureKey === lastStructureKey) {
+      // Data-only update: refresh node data in place and keep every position.
+      const fresh = new Map(built.nodes.map((n) => [n.id, n]));
+      nodes = nodes.map((current) => {
+        const next = fresh.get(current.id);
+        return next
+          ? { ...current, type: next.type, data: next.data, selected: next.selected }
+          : current;
+      });
+      edges = built.edges;
+      return;
+    }
+
+    const previousContext = lastStructureKey.split('\n', 1)[0];
+    const sameContext = previousContext === context;
+    lastStructureKey = structureKey;
+
+    const placed = new Map<string, { x: number; y: number }>();
+    const measured = new Map<string, { width: number; height: number }>();
+    for (const n of nodes) {
+      // Positions from another session, direction or a reset say nothing about this layout.
+      if (sameContext) placed.set(n.id, { x: n.position.x, y: n.position.y });
+      const { width, height } = n.measured ?? {};
+      if (width && height) measured.set(n.id, { width, height });
+    }
+
+    const laidOut = layoutGraph(built.nodes, built.edges, dir, { pinned, placed, measured });
+    const hadNodes = nodes.length > 0;
+    nodes = laidOut.nodes;
+    edges = laidOut.edges;
+
+    const addedNodes = laidOut.nodes.filter((n) => !placed.has(n.id));
+    if (!sameContext || !hadNodes || isOutsideViewport(addedNodes, measured)) {
+      void fitToNodes();
+    }
+  }
+
+  /** True if any of the nodes would render (even partly) outside the visible canvas. */
+  function isOutsideViewport(
+    added: PipanNode[],
+    measured: Map<string, { width: number; height: number }>
+  ): boolean {
+    if (!canvasWidth || !canvasHeight) return true;
+    const { x, y, zoom } = flow.getViewport();
+    return added.some((n) => {
+      const { width, height } = measured.get(n.id) ?? estimatedSize(n);
+      const left = n.position.x * zoom + x;
+      const top = n.position.y * zoom + y;
+      return (
+        left < 0 ||
+        top < 0 ||
+        left + width * zoom > canvasWidth ||
+        top + height * zoom > canvasHeight
+      );
+    });
+  }
+
+  /** Waits for the new nodes to render and be measured, then frames them. */
+  async function fitToNodes() {
+    await tick();
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (mounted) void flow.fitView(FIT_OPTIONS);
+      })
+    );
+  }
+
+  function onNodeDragStop({
+    targetNode,
+    nodes: dragged
+  }: {
+    targetNode: PipanNode | null;
+    nodes: PipanNode[];
+  }) {
+    const moved: Record<string, { x: number; y: number }> = {};
+    for (const n of dragged.length > 0 ? dragged : targetNode ? [targetNode] : []) {
+      moved[n.id] = { x: n.position.x, y: n.position.y };
+    }
+    graphLayoutStore.pin(sessionId, layoutDirection, moved);
+  }
 
   const selectedNode = $derived(
     chatStore.selectedNodeId
@@ -345,8 +468,13 @@
       : null
   );
 
-  function toggleDirection() {
-    layoutDirection = layoutDirection === 'TB' ? 'LR' : 'TB';
+  function setDirection(direction: LayoutDirection) {
+    if (direction === layoutDirection) return;
+    graphLayoutStore.setDirection(sessionId, direction);
+  }
+
+  function resetLayout() {
+    graphLayoutStore.resetLayout(sessionId, layoutDirection);
   }
 
   async function handleSelectWorkspace() {
@@ -365,20 +493,25 @@
   }
 </script>
 
-<div class="relative h-full min-h-0 w-full flex-1 overflow-hidden bg-zinc-950">
+<div
+  bind:clientWidth={canvasWidth}
+  bind:clientHeight={canvasHeight}
+  class="relative h-full min-h-0 w-full flex-1 overflow-hidden bg-zinc-950"
+>
   <SvelteFlow
     bind:nodes
     bind:edges
     {nodeTypes}
     colorMode="dark"
     fitView
-    fitViewOptions={{ padding: 0.24, maxZoom: 1.15 }}
+    fitViewOptions={{ padding: FIT_OPTIONS.padding, maxZoom: FIT_OPTIONS.maxZoom }}
     minZoom={0.2}
     maxZoom={1.75}
     nodesDraggable={true}
     nodesConnectable={false}
     elementsSelectable={true}
     proOptions={{ hideAttribution: true }}
+    onnodedragstop={onNodeDragStop}
     onnodeclick={({ node }) => {
       chatStore.selectedNodeId = node.id;
     }}
@@ -420,19 +553,50 @@
           {nodes.length} {nodes.length === 1 ? 'node' : 'nodes'} · {edges.length} {edges.length === 1 ? 'edge' : 'edges'}
         </span>
 
+        <div
+          role="group"
+          aria-label="Graph layout direction"
+          class="inline-flex overflow-hidden rounded-lg border border-zinc-700/80 bg-zinc-800/90"
+        >
+          <button
+            type="button"
+            aria-pressed={layoutDirection === 'TB'}
+            onclick={() => setDirection('TB')}
+            title="Lay out top to bottom"
+            class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium cursor-pointer transition {layoutDirection ===
+            'TB'
+              ? 'bg-indigo-500/20 text-indigo-200'
+              : 'text-zinc-300 hover:bg-zinc-700'}"
+          >
+            <ArrowDown class="h-3 w-3" />
+            <span>Top → Bottom</span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={layoutDirection === 'LR'}
+            onclick={() => setDirection('LR')}
+            title="Lay out left to right"
+            class="inline-flex items-center gap-1 border-l border-zinc-700/80 px-2 py-1 text-[11px] font-medium cursor-pointer transition {layoutDirection ===
+            'LR'
+              ? 'bg-indigo-500/20 text-indigo-200'
+              : 'text-zinc-300 hover:bg-zinc-700'}"
+          >
+            <ArrowRight class="h-3 w-3" />
+            <span>Left → Right</span>
+          </button>
+        </div>
+
         <button
           type="button"
-          onclick={toggleDirection}
-          class="inline-flex items-center gap-1 rounded-lg border border-zinc-700/80 bg-zinc-800/90 px-2 py-1 text-[11px] font-medium text-zinc-200 transition hover:border-zinc-600 hover:bg-zinc-700 cursor-pointer"
-          title="Toggle Dagre auto-layout orientation"
+          onclick={resetLayout}
+          disabled={pinnedCount === 0}
+          title={pinnedCount === 0
+            ? 'No dragged nodes to reset'
+            : `Release ${pinnedCount} dragged ${pinnedCount === 1 ? 'node' : 'nodes'} and re-run auto-layout`}
+          class="inline-flex items-center gap-1 rounded-lg border border-zinc-700/80 bg-zinc-800/90 px-2 py-1 text-[11px] font-medium text-zinc-200 transition hover:border-zinc-600 hover:bg-zinc-700 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-zinc-700/80 disabled:hover:bg-zinc-800/90"
         >
-          {#if layoutDirection === 'TB'}
-            <ArrowDownUp class="h-3 w-3 text-indigo-400" />
-            <span>Top-Down</span>
-          {:else}
-            <ArrowLeftRight class="h-3 w-3 text-indigo-400" />
-            <span>Left-Right</span>
-          {/if}
+          <RotateCcw class="h-3 w-3 text-indigo-400" />
+          <span>Reset Layout</span>
         </button>
       </div>
     </Panel>
