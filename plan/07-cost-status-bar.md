@@ -2,8 +2,8 @@
 
 ## Usage Indexer & Cost Aggregation (`src-tauri/src/usage.rs`, `src/lib/stores/usage.svelte.ts`)
 - **Backend Usage Aggregator (`usage.rs`)**:
-  - Command `get_usage_analytics()`: Scans both `~/.pi/agent/sessions/**/*.jsonl` (parsing `message` entries with `usage.cost.total`, `usage.input`, `usage.output`, `usage.cacheRead`, `usage.cacheWrite`, `timestamp`, `model`, `provider`) AND Pipan's local `pipan-metadata.json` ledger (so even headless sessions are recorded).
-  - Deduplicates by session/message ID and returns time-series buckets and totals for:
+  - Command `get_usage_analytics()`: Scans both `~/.pi/agent/sessions/**/*.jsonl` (parsing `message` entries with `usage.cost.total`, `usage.input`, `usage.output`, `usage.cacheRead`, `usage.cacheWrite`, `timestamp`, `model`, `provider`) AND Pipan's local SQLite `usage_ledger` table in `pipan.db` (so even headless sessions are recorded). Parsed Pi `.jsonl` entries are upserted into `usage_ledger` (`session_id`, `message_id`, `timestamp`, `provider`, `model`, `input`, `output`, `cache_read`, `cache_write`, `cost_usd`; PK `(session_id, message_id)`) and a per-file `(path, mtime, byte_offset)` checkpoint lets rescans parse only new lines.
+  - Deduplication falls out of the `(session_id, message_id)` primary key (`INSERT ... ON CONFLICT DO NOTHING`). Time-series buckets and totals are computed with SQL `GROUP BY` over `timestamp` (indexed) for:
     - **Day** (hourly breakdown for today + last 30 days daily)
     - **Week** (daily breakdown for current week + last 12 weeks)
     - **Month** (daily/weekly breakdown for current month + last 12 months)
