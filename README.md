@@ -41,7 +41,7 @@ Instead of wrapping a pseudo-terminal, Pipan spawns `pi` as a structured JSON-RP
   - Context-aware composer that switches from **Send** when idle to live **Steer**, **Follow-up**, and **Stop** controls while `pi` is working.
   - Visual queue pills for pending `steer` and `followUp` messages, plus immediate turn cancellation (`clear_queue` + `abort`).
 
-### Roadmap (`PLAN.md`)
+### Roadmap (`plan/`)
 - **Per-Session Git Worktree Isolation:** Automatically create isolated `git worktree` sandboxes per agent session so the host working tree is never mutated directly without review.
 - **Direct GitHub CLI & Webhook Tunnel:** Execute synchronous `gh` CLI queries and stream real-time repository events via `gh webhook forward` into a local Rust HTTP listener—zero MCP server overhead and no REST polling rate limits.
 - **Living Orchestration Graph:** Visualize multi-agent workflows, tool calls, and subagents as a live directed acyclic graph (DAG) using `@xyflow/svelte` and `dagre`.
@@ -135,7 +135,7 @@ pipan/
 │   │   └── webhook.rs                # gh webhook forward tunnel + local axum receiver
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── PLAN.md                           # Multi-phase architecture roadmap
+├── plan/                             # Multi-phase architecture roadmap
 ├── PRODUCT.md                        # Product specification & capabilities overview
 └── package.json
 ```
