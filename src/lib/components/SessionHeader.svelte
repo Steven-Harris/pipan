@@ -11,13 +11,53 @@
     PanelLeft,
     Workflow,
     Columns2,
-    Rows2
+    Rows2,
+    Square,
+    Pencil,
+    Check,
+    X
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { PANELS } from '#lib/workspace/panels.ts';
 
   let isPickingFolder = $state(false);
+  let isEditingName = $state(false);
+  let draftName = $state('');
+  let nameInputEl = $state<HTMLInputElement | null>(null);
+
+  function startEditingName() {
+    if (!chatStore.activeSessionId) return;
+    draftName = chatStore.activeSessionName || workspaceLabel || 'Untitled Session';
+    isEditingName = true;
+    queueMicrotask(() => {
+      nameInputEl?.focus();
+      nameInputEl?.select();
+    });
+  }
+
+  async function commitRename() {
+    if (!isEditingName) return;
+    const trimmed = draftName.trim();
+    isEditingName = false;
+    if (trimmed && chatStore.activeSessionId && trimmed !== chatStore.activeSessionName) {
+      await chatStore.renameSession(chatStore.activeSessionId, trimmed);
+    }
+  }
+
+  function cancelRename() {
+    isEditingName = false;
+  }
+
+  function handleRenameKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      void commitRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRename();
+    }
+  }
 
   const statusBadge = $derived.by(() => {
     const state = chatStore.sessionStatus.state;
@@ -132,6 +172,68 @@
       <span>{statusBadge.label}</span>
     </div>
 
+    <!-- Active Session Name (Inline Rename via double-click or Edit button) -->
+    {#if chatStore.activeSessionId}
+      <div class="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/90 px-2 py-0.5 text-xs text-zinc-100">
+        {#if isEditingName}
+          <input
+            bind:this={nameInputEl}
+            bind:value={draftName}
+            onkeydown={handleRenameKeydown}
+            onblur={() => void commitRename()}
+            aria-label="Session name"
+            class="w-40 rounded bg-zinc-950 px-1.5 py-0.5 text-xs text-zinc-100 outline-none ring-1 ring-indigo-500/60"
+          />
+          <button
+            type="button"
+            onmousedown={(e) => {
+              e.preventDefault();
+              void commitRename();
+            }}
+            class="inline-flex h-4 w-4 items-center justify-center rounded text-emerald-400 hover:bg-zinc-800 cursor-pointer"
+            title="Save session name"
+            aria-label="Save session name"
+          >
+            <Check class="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onmousedown={(e) => {
+              e.preventDefault();
+              cancelRename();
+            }}
+            class="inline-flex h-4 w-4 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 cursor-pointer"
+            title="Cancel rename"
+            aria-label="Cancel rename"
+          >
+            <X class="h-3 w-3" />
+          </button>
+        {:else}
+          <span
+            ondblclick={startEditingName}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => {
+              if (e.key === 'Enter' || e.key === 'F2') startEditingName();
+            }}
+            class="max-w-[180px] truncate font-medium text-zinc-100 cursor-pointer"
+            title="Double-click to rename session"
+          >
+            {chatStore.activeSessionName || workspaceLabel || 'Untitled Session'}
+          </span>
+          <button
+            type="button"
+            onclick={startEditingName}
+            class="inline-flex h-4 w-4 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 cursor-pointer"
+            title="Rename session"
+            aria-label="Rename session"
+          >
+            <Pencil class="h-2.5 w-2.5" />
+          </button>
+        {/if}
+      </div>
+    {/if}
+
     <!-- Workspace Badge -->
     {#if workspaceLabel}
       <div
@@ -238,7 +340,19 @@
       <span>Open Folder…</span>
     </button>
 
-    {#if chatStore.sessionStatus.state === 'running'}
+    {#if chatStore.sessionStatus.state === 'running' || chatStore.sessionStatus.state === 'starting'}
+      {#if chatStore.isAgentRunning}
+        <button
+          type="button"
+          onclick={() => chatStore.abort()}
+          class="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 px-2.5 py-1.5 text-xs font-semibold text-amber-200 transition hover:border-amber-500/60 hover:bg-amber-500/25 cursor-pointer"
+          title="Stop active generation (clear_queue + abort)"
+        >
+          <Square class="h-3 w-3 fill-current" />
+          <span>Stop</span>
+        </button>
+      {/if}
+
       <button
         type="button"
         onclick={handleNewChat}
@@ -253,10 +367,10 @@
         type="button"
         onclick={handleDisconnect}
         class="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:border-rose-500/50 hover:bg-rose-500/20 cursor-pointer"
-        title="Stop Pi RPC process"
+        title="Stop Pi RPC child process (stop_pi_session)"
       >
         <PowerOff class="h-3.5 w-3.5" />
-        <span class="hidden md:inline">Disconnect</span>
+        <span class="hidden md:inline">Stop Process</span>
       </button>
     {/if}
   </div>

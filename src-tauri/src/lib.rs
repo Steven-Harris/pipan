@@ -3,6 +3,7 @@ pub mod approval;
 pub mod db;
 pub mod github;
 pub mod pi_rpc;
+pub mod storage;
 pub mod webhook;
 pub mod worktree;
 
@@ -17,6 +18,9 @@ use db::{
 };
 use github::{
     gh_issue_list, gh_json, gh_pr_checks, gh_pr_list, gh_pr_view, gh_run_list, gh_status,
+};
+use storage::{
+    archive_session, delete_session, list_saved_sessions, rename_session, save_session_metadata,
 };
 use webhook::{
     WebhookManager, get_webhook_forwarder, start_webhook_forwarder, stop_webhook_forwarder,
@@ -37,7 +41,13 @@ pub fn run() {
                 .map_err(|e| e.to_string())
                 .and_then(|dir| {
                     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-                    Database::open(&dir.join("pipan.db"))
+                    let db = Database::open(&dir.join("pipan.db"))?;
+                    if let Err(err) =
+                        db.import_legacy_metadata_json(&dir.join("pipan-metadata.json"))
+                    {
+                        eprintln!("pipan: failed to import legacy pipan-metadata.json: {err}");
+                    }
+                    Ok(db)
                 })
                 .unwrap_or_else(|err| {
                     // Keep the app usable; graph layout just won't survive a restart.
@@ -75,7 +85,12 @@ pub fn run() {
             set_graph_direction,
             load_node_positions,
             save_node_positions,
-            clear_node_positions
+            clear_node_positions,
+            list_saved_sessions,
+            save_session_metadata,
+            rename_session,
+            archive_session,
+            delete_session
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

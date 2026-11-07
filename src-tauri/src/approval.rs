@@ -228,13 +228,18 @@ pub fn is_destructive_command(command: &str) -> Option<(&'static str, &'static s
             match sub {
                 Some("rm") => return Some(("delete", "Deletes files or directories")),
                 Some("push") => return Some(("git-push", "Pushes commits to a remote repository")),
-                Some("reset") if words.iter().any(|w| *w == "--hard") => {
+                Some("reset") if words.contains(&"--hard") => {
                     return Some((
                         "git-destructive",
                         "Discards uncommitted changes or git history",
                     ));
                 }
-                Some("clean") if words.iter().any(|w| w.starts_with('-') && (w.contains('f') || w.contains('d') || w.contains('x'))) => {
+                Some("clean")
+                    if words.iter().any(|w| {
+                        w.starts_with('-')
+                            && (w.contains('f') || w.contains('d') || w.contains('x'))
+                    }) =>
+                {
                     return Some((
                         "git-destructive",
                         "Discards uncommitted changes or git history",
@@ -246,7 +251,7 @@ pub fn is_destructive_command(command: &str) -> Option<(&'static str, &'static s
                         "Discards uncommitted changes or git history",
                     ));
                 }
-                Some("tag") if words.iter().any(|w| *w == "-d") => {
+                Some("tag") if words.contains(&"-d") => {
                     return Some((
                         "git-destructive",
                         "Discards uncommitted changes or git history",
@@ -258,7 +263,7 @@ pub fn is_destructive_command(command: &str) -> Option<(&'static str, &'static s
                         "Discards uncommitted changes or git history",
                     ));
                 }
-                Some("checkout") | Some("restore") if words.iter().any(|w| *w == ".") => {
+                Some("checkout") | Some("restore") if words.contains(&".") => {
                     return Some((
                         "git-destructive",
                         "Discards uncommitted changes or git history",
@@ -268,7 +273,7 @@ pub fn is_destructive_command(command: &str) -> Option<(&'static str, &'static s
             }
         }
 
-        if cmd0 == "find" && words.iter().any(|w| *w == "-delete") {
+        if cmd0 == "find" && words.contains(&"-delete") {
             return Some(("delete", "Deletes files or directories"));
         }
     }
@@ -426,7 +431,10 @@ mod tests {
         assert_eq!(act.action, "rm test.txt");
 
         let decision = rx.await.expect("channel must deliver");
-        assert_eq!(decision, ApprovalDecision::Modify("rm -i test.txt".to_string()));
+        assert_eq!(
+            decision,
+            ApprovalDecision::Modify("rm -i test.txt".to_string())
+        );
         assert_eq!(registry.list().await.len(), 0);
     }
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Send, Compass, Clock, Square } from 'lucide-svelte';
+  import { Send, Compass, Clock, Square, PowerOff } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import type { StreamingBehavior } from '#lib/types/pi.ts';
 
@@ -111,10 +111,21 @@
             type="button"
             onclick={() => chatStore.abort()}
             class="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-600/20 px-2.5 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-600/35 cursor-pointer"
-            title="Clear queues and abort current generation"
+            title="Clear queues and abort current generation (clear_queue + abort)"
           >
             <Square class="h-3.5 w-3.5 fill-current" />
             <span>Stop</span>
+          </button>
+
+          <button
+            type="button"
+            onclick={() => chatStore.stopSession()}
+            class="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2 py-2 text-xs font-medium text-zinc-300 transition hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-200 cursor-pointer"
+            title="Terminate Pi RPC child process (stop_pi_session)"
+            aria-label="Stop Process"
+          >
+            <PowerOff class="h-3.5 w-3.5" />
+            <span class="hidden md:inline">Stop Process</span>
           </button>
         {/if}
       </div>

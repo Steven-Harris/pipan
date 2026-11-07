@@ -6,10 +6,12 @@
 //!
 //! Version 1 (node graph): `sessions` (just enough to own a graph direction; the
 //! persistent-sessions phase extends it) and `node_positions`.
+//! Version 2 (persistent sessions): extends `sessions` with full session metadata,
+//! adds `session_tags`, and creates indexes for search/filter/sort queries.
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -32,6 +34,37 @@ const MIGRATIONS: &[&str] = &[
         pinned      INTEGER NOT NULL DEFAULT 1,
         PRIMARY KEY (session_id, direction, node_id)
     );",
+    // v2: persistent sessions metadata, tags, and search/sort indexes.
+    "ALTER TABLE sessions ADD COLUMN name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
+    ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'disconnected';
+    ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'headless';
+    ALTER TABLE sessions ADD COLUMN cwd TEXT;
+    ALTER TABLE sessions ADD COLUMN session_file_path TEXT;
+    ALTER TABLE sessions ADD COLUMN pi_session_file TEXT;
+    ALTER TABLE sessions ADD COLUMN group_name TEXT;
+    ALTER TABLE sessions ADD COLUMN branch TEXT;
+    ALTER TABLE sessions ADD COLUMN worktree_path TEXT;
+    ALTER TABLE sessions ADD COLUMN model TEXT;
+    ALTER TABLE sessions ADD COLUMN model_id TEXT;
+    ALTER TABLE sessions ADD COLUMN provider TEXT;
+    ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sessions ADD COLUMN tool_call_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sessions ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sessions ADD COLUMN total_cost_usd REAL NOT NULL DEFAULT 0.0;
+
+    CREATE TABLE session_tags (
+        session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        tag         TEXT NOT NULL,
+        PRIMARY KEY (session_id, tag)
+    );
+
+    CREATE INDEX idx_sessions_updated_at ON sessions(updated_at);
+    CREATE INDEX idx_sessions_archived ON sessions(archived);
+    CREATE INDEX idx_sessions_cwd ON sessions(cwd);
+    CREATE INDEX idx_session_tags_tag ON session_tags(tag);",
 ];
 
 /// A node coordinate as stored per `(session, direction)`.
@@ -47,8 +80,9 @@ fn default_pinned() -> bool {
     true
 }
 
+#[derive(Clone)]
 pub struct Database {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl Database {
@@ -71,11 +105,11 @@ impl Database {
             .map_err(|e| e.to_string())?;
         migrate(&mut conn)?;
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         })
     }
 
-    fn lock(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, Connection> {
         // A poisoned lock only means another command panicked mid-query; SQLite itself
         // stays consistent, so keep serving requests.
         self.conn.lock().unwrap_or_else(|p| p.into_inner())
@@ -186,7 +220,9 @@ impl Database {
 fn check_direction(direction: &str) -> Result<(), String> {
     match direction {
         "TB" | "LR" => Ok(()),
-        other => Err(format!("invalid graph direction `{other}` (expected TB or LR)")),
+        other => Err(format!(
+            "invalid graph direction `{other}` (expected TB or LR)"
+        )),
     }
 }
 
@@ -214,7 +250,10 @@ pub async fn get_graph_direction(
     db: State<'_, Database>,
     session_id: String,
 ) -> Result<Option<String>, String> {
-    db.graph_direction(&session_id)
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.graph_direction(&session_id))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -223,7 +262,10 @@ pub async fn set_graph_direction(
     session_id: String,
     direction: String,
 ) -> Result<(), String> {
-    db.set_graph_direction(&session_id, &direction)
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.set_graph_direction(&session_id, &direction))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -232,7 +274,10 @@ pub async fn load_node_positions(
     session_id: String,
     direction: String,
 ) -> Result<HashMap<String, NodePosition>, String> {
-    db.load_node_positions(&session_id, &direction)
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.load_node_positions(&session_id, &direction))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -242,7 +287,10 @@ pub async fn save_node_positions(
     direction: String,
     positions: HashMap<String, NodePosition>,
 ) -> Result<(), String> {
-    db.save_node_positions(&session_id, &direction, &positions)
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.save_node_positions(&session_id, &direction, &positions))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -251,7 +299,10 @@ pub async fn clear_node_positions(
     session_id: String,
     direction: String,
 ) -> Result<(), String> {
-    db.clear_node_positions(&session_id, &direction)
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || db.clear_node_positions(&session_id, &direction))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -259,11 +310,7 @@ mod tests {
     use super::*;
 
     fn pos(x: f64, y: f64) -> NodePosition {
-        NodePosition {
-            x,
-            y,
-            pinned: true,
-        }
+        NodePosition { x, y, pinned: true }
     }
 
     #[test]
@@ -323,6 +370,49 @@ mod tests {
         }
         let db = Database::open(&path).unwrap();
         assert_eq!(db.graph_direction("s1").unwrap().as_deref(), Some("LR"));
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migrates_v1_database_to_v2_without_losing_data() {
+        let dir = std::env::temp_dir().join(format!("pipan-db-v1v2-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pipan.db");
+
+        // Create a v1 database manually
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            conn.pragma_update(None, "user_version", 1i64).unwrap();
+            conn.execute(
+                "INSERT INTO sessions (id, graph_direction) VALUES ('v1-session', 'LR')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO node_positions (session_id, direction, node_id, x, y, pinned)
+                 VALUES ('v1-session', 'LR', 'node-1', 12.0, 34.0, 1)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Reopen with Database::open so migration v2 runs
+        let db = Database::open(&path).unwrap();
+        assert_eq!(
+            db.graph_direction("v1-session").unwrap().as_deref(),
+            Some("LR")
+        );
+        let positions = db.load_node_positions("v1-session", "LR").unwrap();
+        assert_eq!(positions.get("node-1"), Some(&pos(12.0, 34.0)));
+
+        let version: i64 = db
+            .lock()
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, MIGRATIONS.len() as i64);
+
         drop(db);
         let _ = std::fs::remove_dir_all(&dir);
     }

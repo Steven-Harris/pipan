@@ -23,9 +23,11 @@ use crate::approval::{
     ApprovalDecision, ApprovalRegistry, ApprovalRequestPayload, ApprovalResolvedPayload,
     build_extension_ui_response, ensure_plan_gate_extension, parse_approval_request,
 };
+use crate::db::Database;
 use crate::pi_rpc::{
-    build_pi_command_with_args, terminate_process_tree, trim_line_endings,
+    build_pi_command_with_args, build_pi_session_args, terminate_process_tree, trim_line_endings,
 };
+use crate::storage::{SaveSessionMetadataInput, default_session_name, resolve_session_file_path};
 use crate::worktree::{self, WorktreeInfo};
 
 #[derive(Debug, Clone, Serialize)]
@@ -173,13 +175,24 @@ impl AgentManager {
         let session_id = worktree::new_session_id();
         let wt = worktree::create_worktree(repo_path, &root, &session_id, base_ref).await?;
 
+        let sessions_dir = app
+            .path()
+            .app_local_data_dir()
+            .map(|d| d.join("sessions"))
+            .unwrap_or_else(|_| std::env::temp_dir().join("pipan-sessions"));
+        let _ = std::fs::create_dir_all(&sessions_dir);
+        let session_file = resolve_session_file_path(&sessions_dir, &session_id);
+        let session_label = default_session_name("worktree", Some(&wt.repo_root), Some(&wt.branch));
+
         // Plan Mode: load the bundled interceptor extension into this session so destructive
         // commands pause for user approval before execution.
-        let mut extra_args: Vec<std::ffi::OsString> = Vec::new();
+        let mut ext_args: Vec<std::ffi::OsString> = Vec::new();
         if let Ok(ext_path) = ensure_plan_gate_extension(app) {
-            extra_args.push("--extension".into());
-            extra_args.push(ext_path.into_os_string());
+            ext_args.push("--extension".into());
+            ext_args.push(ext_path.into_os_string());
         }
+        let extra_args =
+            build_pi_session_args(Some(&session_file), Some(&session_label), false, &ext_args);
 
         let mut cmd = build_pi_command_with_args(Path::new(&wt.path), &extra_args);
         let mut child = match cmd.spawn() {
@@ -222,6 +235,20 @@ impl AgentManager {
                     }),
                 },
             );
+        }
+        if let Some(db) = app.try_state::<Database>().map(|s| s.inner().clone()) {
+            let meta = SaveSessionMetadataInput {
+                id: session_id.clone(),
+                name: Some(session_label),
+                status: Some("running".to_string()),
+                mode: Some("worktree".to_string()),
+                cwd: Some(info.worktree.path.clone()),
+                session_file_path: Some(session_file.to_string_lossy().to_string()),
+                branch: Some(info.worktree.branch.clone()),
+                worktree_path: Some(info.worktree.path.clone()),
+                ..Default::default()
+            };
+            let _ = tokio::task::spawn_blocking(move || db.save_session_metadata(&meta)).await;
         }
         let _ = app.emit("agent:status", &info);
 
@@ -300,7 +327,8 @@ impl AgentManager {
                                         let sessions_c = sessions.clone();
                                         tokio::spawn(async move {
                                             if let Ok(decision) = rx.await {
-                                                let resp = build_extension_ui_response(&req_id, &decision);
+                                                let resp =
+                                                    build_extension_ui_response(&req_id, &decision);
                                                 let mut payload = match serde_json::to_vec(&resp) {
                                                     Ok(p) => p,
                                                     Err(_) => return,
@@ -317,9 +345,15 @@ impl AgentManager {
                                                 }
 
                                                 let (res_str, repl) = match decision {
-                                                    ApprovalDecision::Approve => ("approved".to_string(), None),
-                                                    ApprovalDecision::Reject => ("rejected".to_string(), None),
-                                                    ApprovalDecision::Modify(m) => ("modified".to_string(), Some(m)),
+                                                    ApprovalDecision::Approve => {
+                                                        ("approved".to_string(), None)
+                                                    }
+                                                    ApprovalDecision::Reject => {
+                                                        ("rejected".to_string(), None)
+                                                    }
+                                                    ApprovalDecision::Modify(m) => {
+                                                        ("modified".to_string(), Some(m))
+                                                    }
                                                 };
                                                 let _ = app_c.emit(
                                                     "agent:approval_resolved",
@@ -394,7 +428,18 @@ impl AgentManager {
                         }
                         _ => entry.info.state = "exited".to_string(),
                     }
-                    let _ = app.emit("agent:status", &entry.info);
+                    let info_snapshot = entry.info.clone();
+                    let next_state = info_snapshot.state.clone();
+                    let sid_for_db = sid.clone();
+                    drop(guard);
+
+                    if let Some(db) = app.try_state::<Database>().map(|s| s.inner().clone()) {
+                        let _ = tokio::task::spawn_blocking(move || {
+                            db.set_session_status(&sid_for_db, &next_state)
+                        })
+                        .await;
+                    }
+                    let _ = app.emit("agent:status", &info_snapshot);
                 }
             });
         }
@@ -483,6 +528,12 @@ impl AgentManager {
             self.sessions.lock().await.remove(session_id);
         }
 
+        if let Some(db) = app.try_state::<Database>().map(|s| s.inner().clone()) {
+            let sid = session_id.to_string();
+            let _ =
+                tokio::task::spawn_blocking(move || db.set_session_status(&sid, "stopped")).await;
+        }
+
         let _ = app.emit("agent:status", &info);
         Ok(info)
     }
@@ -517,7 +568,9 @@ pub async fn resolve_approval(
             let repl = replacement
                 .map(|r| r.trim().to_string())
                 .filter(|r| !r.is_empty())
-                .ok_or_else(|| "Replacement command required when modifying an action".to_string())?;
+                .ok_or_else(|| {
+                    "Replacement command required when modifying an action".to_string()
+                })?;
             ApprovalDecision::Modify(repl)
         }
         other => return Err(format!("Unknown resolution: {}", other)),
@@ -527,7 +580,12 @@ pub async fn resolve_approval(
         .resolve(&request_id, decision)
         .await
         .map(|_| ())
-        .ok_or_else(|| format!("Approval request not found or already resolved: {}", request_id))
+        .ok_or_else(|| {
+            format!(
+                "Approval request not found or already resolved: {}",
+                request_id
+            )
+        })
 }
 
 #[tauri::command]
