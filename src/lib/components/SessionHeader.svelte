@@ -9,9 +9,13 @@
     Sparkles,
     Loader2,
     PanelLeft,
-    Workflow
+    Workflow,
+    Columns2,
+    Rows2
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
+  import { PANELS } from '#lib/workspace/panels.ts';
 
   let isPickingFolder = $state(false);
 
@@ -163,8 +167,51 @@
     {/if}
   </div>
 
-  <!-- Right: Session Actions -->
+  <!-- Right: Panel Toggles + Session Actions -->
   <div class="flex shrink-0 items-center gap-2">
+    <div class="flex items-center gap-1" role="toolbar" aria-label="Session panels">
+      {#each PANELS as def (def.id)}
+        {@const Icon = def.icon}
+        {@const isOpen = workspaceStore.isOpen(def.id)}
+        <button
+          type="button"
+          onclick={() => workspaceStore.togglePanel(def.id)}
+          aria-pressed={isOpen}
+          class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition cursor-pointer {isOpen
+            ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-100'
+            : 'border-zinc-700/80 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-700/70'}"
+          title={isOpen ? `Close ${def.label}` : `Open ${def.label}`}
+        >
+          <Icon class="h-3.5 w-3.5 {isOpen ? 'text-indigo-300' : 'text-zinc-400'}" />
+          <span class="hidden xl:inline">{def.label}</span>
+        </button>
+      {/each}
+
+      {#if workspaceStore.hasPanels}
+        {@const toLabel =
+          workspaceStore.orientation === 'vertical'
+            ? 'Switch to top/bottom split'
+            : 'Switch to side-by-side split'}
+        <button
+          type="button"
+          onclick={() => workspaceStore.toggleOrientation()}
+          class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700/80 bg-zinc-800/60 px-2 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-700/70 cursor-pointer"
+          title={toLabel}
+          aria-label={toLabel}
+        >
+          {#if workspaceStore.orientation === 'vertical'}
+            <Columns2 class="h-3.5 w-3.5 text-indigo-400" />
+            <span class="hidden lg:inline">Side by side</span>
+          {:else}
+            <Rows2 class="h-3.5 w-3.5 text-indigo-400" />
+            <span class="hidden lg:inline">Top / bottom</span>
+          {/if}
+        </button>
+      {/if}
+    </div>
+
+    <span class="h-5 w-px bg-zinc-800" aria-hidden="true"></span>
+
     <button
       type="button"
       onclick={handleStartHeadless}
