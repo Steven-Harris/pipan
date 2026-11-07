@@ -58,6 +58,8 @@ pub struct StartPiOptions {
     pub session_file_path: Option<String>,
     pub name: Option<String>,
     pub ephemeral: Option<bool>,
+    pub model: Option<String>,
+    pub thinking_level: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -300,11 +302,31 @@ impl PiRpcManager {
         };
 
         // Build and spawn the Pi RPC process
+        let mut extra_args: Vec<OsString> = Vec::new();
+        if let Some(model_arg) = options
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            extra_args.push(OsString::from("--model"));
+            extra_args.push(OsString::from(model_arg));
+        }
+        if let Some(thinking_arg) = options
+            .thinking_level
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            extra_args.push(OsString::from("--thinking"));
+            extra_args.push(OsString::from(thinking_arg));
+        }
+
         let cli_args = build_pi_session_args(
             session_file_path_buf.as_deref(),
             Some(session_name.as_str()),
             ephemeral,
-            &[],
+            &extra_args,
         );
         let mut cmd = build_pi_command_with_args(&working_dir, &cli_args);
         let mut child = match cmd.spawn() {
@@ -369,6 +391,18 @@ impl PiRpcManager {
                 .try_state::<Database>()
                 .map(|s| s.inner().clone())
         {
+            let (opt_provider, opt_model_id) = match options
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                Some(raw) => match raw.split_once('/') {
+                    Some((p, m)) => (Some(p.to_string()), Some(m.to_string())),
+                    None => (None, Some(raw.to_string())),
+                },
+                None => (None, None),
+            };
             let meta = SaveSessionMetadataInput {
                 id: session_id.clone(),
                 name: options.name.clone().or(Some(session_name.clone())),
@@ -376,6 +410,8 @@ impl PiRpcManager {
                 mode: Some(mode.clone()),
                 cwd: Some(cwd_display.clone()),
                 session_file_path: session_file_str.clone(),
+                model_id: opt_model_id,
+                provider: opt_provider,
                 ..Default::default()
             };
             let _ = tokio::task::spawn_blocking(move || db.save_session_metadata(&meta)).await;
@@ -856,6 +892,7 @@ fn candidate_cli_dirs() -> Vec<PathBuf> {
 // ============================================================================
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn start_pi_session(
     app_handle: AppHandle,
     manager: State<'_, PiRpcManager>,
@@ -864,6 +901,8 @@ pub async fn start_pi_session(
     session_file_path: Option<String>,
     name: Option<String>,
     ephemeral: Option<bool>,
+    model: Option<String>,
+    thinking_level: Option<String>,
 ) -> Result<PiSessionStatus, String> {
     manager
         .start_session(
@@ -874,6 +913,8 @@ pub async fn start_pi_session(
                 session_file_path,
                 name,
                 ephemeral,
+                model,
+                thinking_level,
             },
         )
         .await
@@ -1030,5 +1071,30 @@ mod tests {
             .map(|a| a.to_string_lossy().to_string())
             .collect();
         assert_eq!(ephemeral_strs, vec!["--no-session".to_string()]);
+
+        let with_model = build_pi_session_args(
+            Some(path),
+            Some("Model Session"),
+            false,
+            &[
+                OsString::from("--model"),
+                OsString::from("anthropic/claude-sonnet-4-20250514"),
+            ],
+        );
+        let with_model_strs: Vec<String> = with_model
+            .iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            with_model_strs,
+            vec![
+                "--session".to_string(),
+                path.to_string_lossy().to_string(),
+                "--name".to_string(),
+                "Model Session".to_string(),
+                "--model".to_string(),
+                "anthropic/claude-sonnet-4-20250514".to_string(),
+            ]
+        );
     }
 }

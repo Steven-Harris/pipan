@@ -29,6 +29,52 @@ export interface PiModelInfo {
   thinkingLevel?: string;
 }
 
+export interface PiModelCostInfo {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface PiFullModelInfo {
+  id: string;
+  name?: string;
+  provider: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+  supportsImages?: boolean;
+  input?: string[];
+  cost?: PiModelCostInfo;
+  isDefault?: boolean;
+  defaultThinkingLevel?: string;
+}
+
+export interface PiSkillItem {
+  name: string;
+  description: string;
+  source: 'skill' | 'prompt' | 'extension' | string;
+  path?: string;
+  scope?: 'workspace' | 'user' | 'agents' | string;
+}
+
+export interface FileAttachmentPayload {
+  kind: 'image' | 'file';
+  type: 'image' | 'file';
+  name: string;
+  path: string;
+  relativePath?: string;
+  insideWorkspace: boolean;
+  mimeType: string;
+  sizeBytes: number;
+  data?: string;
+  textContent?: string;
+}
+
+export interface PromptAttachment extends FileAttachmentPayload {
+  id: string;
+}
+
 export interface TokenUsage {
   input?: number;
   output?: number;
@@ -101,6 +147,29 @@ export type PiRpcCommand =
   | {
       id?: string;
       type: 'get_messages';
+    }
+  | {
+      id?: string;
+      type: 'get_available_models';
+    }
+  | {
+      id?: string;
+      type: 'get_available_thinking_levels';
+    }
+  | {
+      id?: string;
+      type: 'set_model';
+      provider: string;
+      modelId: string;
+    }
+  | {
+      id?: string;
+      type: 'set_thinking_level';
+      level: string;
+    }
+  | {
+      id?: string;
+      type: 'get_commands';
     }
   | {
       id?: string;
