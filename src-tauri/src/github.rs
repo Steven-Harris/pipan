@@ -1654,6 +1654,7 @@ pub fn build_pr_merge_args(
     delete_branch: bool,
     subject: Option<&str>,
     body: Option<&str>,
+    admin: bool,
     repo: Option<String>,
 ) -> Result<Vec<String>, String> {
     let sel = selector.trim();
@@ -1668,6 +1669,9 @@ pub fn build_pr_merge_args(
     if delete_branch {
         args.push("--delete-branch".into());
     }
+    if admin {
+        args.push("--admin".into());
+    }
     if let Some(s) = subject.map(str::trim).filter(|s| !s.is_empty()) {
         args.push("--subject".into());
         args.push(s.to_string());
@@ -1680,7 +1684,7 @@ pub fn build_pr_merge_args(
     Ok(args)
 }
 
-/// Runs `gh pr merge <selector> --<merge|squash|rebase>` (plus `--delete-branch` when selected).
+/// Runs `gh pr merge <selector> --<merge|squash|rebase>` (plus `--delete-branch` and `--admin` when selected).
 #[tauri::command]
 pub async fn gh_pr_merge(
     selector: String,
@@ -1688,6 +1692,7 @@ pub async fn gh_pr_merge(
     delete_branch: Option<bool>,
     subject: Option<String>,
     body: Option<String>,
+    admin: Option<bool>,
     repo: Option<String>,
     cwd: Option<String>,
 ) -> Result<String, String> {
@@ -1697,6 +1702,7 @@ pub async fn gh_pr_merge(
         delete_branch.unwrap_or(false),
         subject.as_deref(),
         body.as_deref(),
+        admin.unwrap_or(false),
         repo,
     )?;
     run_gh(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
@@ -1962,6 +1968,7 @@ new file mode 100644
             true,
             Some("feat: ship it"),
             Some("Detailed body"),
+            false,
             Some("Steven-Harris/pipan".into()),
         )
         .unwrap();
@@ -1981,7 +1988,31 @@ new file mode 100644
                 "Steven-Harris/pipan"
             ])
         );
-        assert!(build_pr_merge_args("15", "fast-forward", false, None, None, None).is_err());
+
+        let admin_merge = build_pr_merge_args(
+            "15",
+            "squash",
+            false,
+            None,
+            None,
+            true,
+            Some("Steven-Harris/pipan".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            admin_merge,
+            v(&[
+                "pr",
+                "merge",
+                "15",
+                "--squash",
+                "--admin",
+                "--repo",
+                "Steven-Harris/pipan"
+            ])
+        );
+
+        assert!(build_pr_merge_args("15", "fast-forward", false, None, None, false, None).is_err());
     }
 
     #[test]
@@ -1995,11 +2026,16 @@ new file mode 100644
             "is:pr is:closed author:@me"
         );
         assert!(!has_explicit_search_scope("is:pr is:open"));
-        assert!(has_explicit_search_scope("is:pr is:open review-requested:@me"));
+        assert!(has_explicit_search_scope(
+            "is:pr is:open review-requested:@me"
+        ));
         assert!(has_explicit_search_scope("is:pr is:open user:@me"));
-        assert!(has_explicit_search_scope("is:pr is:open repo:Steven-Harris/githelm"));
+        assert!(has_explicit_search_scope(
+            "is:pr is:open repo:Steven-Harris/githelm"
+        ));
 
-        let repo_args = build_repo_merge_settings_args(Some("Steven-Harris/githelm".into())).unwrap();
+        let repo_args =
+            build_repo_merge_settings_args(Some("Steven-Harris/githelm".into())).unwrap();
         assert_eq!(
             repo_args,
             v(&[

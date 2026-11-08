@@ -25,6 +25,13 @@
     flowStore.init();
     void doctorStore.init();
   });
+
+  // Auto-close open PR drawer if navigating to any non-chat view/extension
+  $effect(() => {
+    if (workspaceStore.currentView !== 'chat' && githubStore.selectedPrNumber !== null) {
+      void githubStore.selectPr(null);
+    }
+  });
 </script>
 
 <div class="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
@@ -53,9 +60,7 @@
     <Sidebar />
 
     <main class="flex flex-1 min-w-0 flex-col overflow-hidden">
-      {#if githubStore.selectedPrNumber !== null}
-        <PrDetailDrawer />
-      {:else if workspaceStore.currentView === 'extensions'}
+      {#if workspaceStore.currentView === 'extensions'}
         <ExtensionsManagerPage />
       {:else if workspaceStore.currentView === 'cost' && extensionRegistry.isMainViewEnabled('cost')}
         <CostAnalyticsPage />
@@ -73,6 +78,8 @@
         {:else}
           <WorkspaceLayout />
         {/if}
+      {:else if githubStore.selectedPrNumber !== null}
+        <PrDetailDrawer />
       {:else}
         <WorkspaceLayout />
       {/if}

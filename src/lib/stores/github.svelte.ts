@@ -723,6 +723,7 @@ class GithubStore {
 		deleteBranch: boolean;
 		subject?: string;
 		body?: string;
+		admin?: boolean;
 	}): Promise<boolean> {
 		const prNumber = this.selectedPrNumber;
 		if (prNumber === null) return false;
@@ -758,12 +759,13 @@ class GithubStore {
 				deleteBranch: options.deleteBranch,
 				subject: options.subject?.trim() || null,
 				body: options.body?.trim() || null,
+				admin: Boolean(options.admin),
 				repo: this.effectiveRepo ?? null,
 				cwd: this.effectiveCwd ?? null
 			});
 			this.actionFeedback = {
 				type: 'success',
-				message: `Merged PR #${prNumber} via ${options.method}`
+				message: `Merged PR #${prNumber} via ${options.method}${options.admin ? ' (rulesets bypassed with --admin)' : ''}`
 			};
 			await Promise.all([this.loadPrDetail(prNumber), this.refreshPrList()]);
 			return true;

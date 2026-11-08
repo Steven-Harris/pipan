@@ -28,6 +28,7 @@
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
+  import { githubStore } from '#lib/stores/github.svelte.ts';
   import { doctorStore } from '#lib/stores/doctor.svelte.ts';
   import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import ExtensionContributionHost from './ExtensionContributionHost.svelte';
@@ -248,6 +249,7 @@
       <button
         type="button"
         onclick={() => {
+          void githubStore.selectPr(null);
           activeTab = 'sessions';
           workspaceStore.openChatView();
         }}
@@ -270,6 +272,7 @@
         <button
           type="button"
           onclick={() => {
+            void githubStore.selectPr(null);
             activeTab = tab.id;
             workspaceStore.openChatView();
           }}
@@ -289,6 +292,7 @@
         <button
           type="button"
           onclick={() => {
+            void githubStore.selectPr(null);
             if (view.id === 'cost') {
               workspaceStore.toggleCostView();
             } else {
@@ -310,7 +314,10 @@
 
       <button
         type="button"
-        onclick={() => workspaceStore.toggleExtensionsView()}
+        onclick={() => {
+          void githubStore.selectPr(null);
+          workspaceStore.toggleExtensionsView();
+        }}
         class="inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {workspaceStore.currentView ===
         'extensions'
           ? 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/40 shadow-sm'

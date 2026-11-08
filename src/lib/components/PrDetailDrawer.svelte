@@ -19,6 +19,7 @@
 		Rows2,
 		Trash2,
 		ShieldCheck,
+		ShieldAlert,
 		AlertTriangle,
 		Radio,
 		Lock,
@@ -43,6 +44,7 @@
 	let mergeSubject = $state('');
 	let mergeBody = $state('');
 	let showMergeOptions = $state(false);
+	let bypassAdmin = $state(false);
 
 	// Review submission popover state
 	let showReviewPopover = $state(false);
@@ -241,17 +243,27 @@
 		}
 	}
 
+	const isRulesetBlocked = $derived.by(() => {
+		if (!pr) return false;
+		if (pr.mergeStateStatus === 'BLOCKED') return true;
+		if (pr.reviewDecision === 'CHANGES_REQUESTED' || pr.reviewDecision === 'REVIEW_REQUIRED') return true;
+		if (checksSummary.fail > 0) return true;
+		return false;
+	});
+
 	async function handleMerge() {
 		const ok = await githubStore.mergePr({
 			method: mergeMethod,
 			deleteBranch,
 			subject: mergeSubject,
-			body: mergeBody
+			body: mergeBody,
+			admin: bypassAdmin
 		});
 		if (ok) {
 			mergeSubject = '';
 			mergeBody = '';
 			showMergeOptions = false;
+			bypassAdmin = false;
 		}
 	}
 
@@ -630,12 +642,35 @@
 						</div>
 
 						<!-- Merge Controls Form -->
-						<div class="space-y-2 pt-1">
-							<div class="flex flex-wrap items-center gap-2">
+						<div class="space-y-2.5 pt-1">
+							{#if isRulesetBlocked}
+								<div class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-200 space-y-1">
+									<div class="flex items-center gap-1.5 font-medium text-amber-300">
+										<AlertTriangle class="h-4 w-4 shrink-0 text-amber-400" />
+										<span>Ruleset or branch protection rules block normal merge</span>
+									</div>
+									<p class="text-[11px] text-amber-200/80 leading-relaxed">
+										{#if pr.mergeStateStatus === 'BLOCKED'}
+											Merge status is <strong class="font-mono text-amber-300">BLOCKED</strong>.
+										{/if}
+										{#if pr.reviewDecision === 'CHANGES_REQUESTED'}
+											Changes have been requested by a reviewer.
+										{:else if pr.reviewDecision === 'REVIEW_REQUIRED'}
+											Required reviews are missing.
+										{/if}
+										{#if checksSummary.fail > 0}
+											{checksSummary.fail} required check{checksSummary.fail === 1 ? '' : 's'} failed.
+										{/if}
+										GitHub will reject merging unless rulesets are bypassed using <code>--admin</code>.
+									</p>
+								</div>
+							{/if}
+
+							<div class="flex flex-wrap items-center gap-2.5">
 								<select
 									bind:value={mergeMethod}
 									aria-label="Select merge method"
-									class="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-indigo-500"
+									class="flex-1 min-w-[130px] rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-indigo-500"
 								>
 									{#each allowedMethods as method (method)}
 										<option value={method}>
@@ -656,6 +691,25 @@
 									/>
 									<span>Delete branch</span>
 								</label>
+
+								<label
+									class="inline-flex items-center gap-1.5 text-xs cursor-pointer {bypassAdmin
+										? 'text-amber-300 font-semibold'
+										: isRulesetBlocked
+											? 'text-amber-400 font-medium'
+											: 'text-zinc-400 hover:text-zinc-200'}"
+									title="Pass --admin to gh pr merge to bypass rulesets and branch protections (requires admin or bypass permission)"
+								>
+									<input
+										type="checkbox"
+										bind:checked={bypassAdmin}
+										class="rounded border-amber-500/50 bg-zinc-950 text-amber-500 focus:ring-amber-500"
+									/>
+									<span class="inline-flex items-center gap-1">
+										<ShieldAlert class="h-3.5 w-3.5 text-amber-400" />
+										<span>Bypass rulesets (<code>--admin</code>)</span>
+									</span>
+								</label>
 							</div>
 
 							<div class="flex items-center justify-between gap-2">
@@ -670,17 +724,32 @@
 								<button
 									type="button"
 									onclick={() => void handleMerge()}
-									disabled={githubStore.mergingPr || pr.isDraft || pr.mergeable === 'CONFLICTING'}
-									class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 cursor-pointer"
+									disabled={githubStore.mergingPr || pr.isDraft || pr.mergeable === 'CONFLICTING' || (isRulesetBlocked && !bypassAdmin)}
+									class="inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-1.5 text-xs font-semibold text-white transition disabled:opacity-50 cursor-pointer {bypassAdmin
+										? 'border-amber-500/60 bg-amber-600 hover:bg-amber-500'
+										: 'border-emerald-500/50 bg-emerald-600 hover:bg-emerald-500'}"
+									title={isRulesetBlocked && !bypassAdmin
+										? 'Merge blocked by ruleset or branch protection. Check "Bypass rulesets (--admin)" to merge anyway.'
+										: bypassAdmin
+											? `Bypass rulesets with --admin and merge #${pr.number}`
+											: `Merge #${pr.number}`}
 								>
 									{#if githubStore.mergingPr}
 										<Loader2 class="h-3.5 w-3.5 animate-spin" />
+									{:else if bypassAdmin}
+										<ShieldAlert class="h-3.5 w-3.5" />
 									{:else}
 										<GitMerge class="h-3.5 w-3.5" />
 									{/if}
-									<span>Merge #{pr.number}</span>
+									<span>{bypassAdmin ? `Bypass & Merge #${pr.number}` : `Merge #${pr.number}`}</span>
 								</button>
 							</div>
+
+							{#if isRulesetBlocked && !bypassAdmin}
+								<p class="text-[10px] text-amber-400/90 text-right">
+									Check <strong>Bypass rulesets (<code>--admin</code>)</strong> above to merge.
+								</p>
+							{/if}
 
 							{#if showMergeOptions}
 								<div class="space-y-2 pt-2 border-t border-zinc-800">

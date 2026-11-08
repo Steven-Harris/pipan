@@ -7,6 +7,7 @@
     PowerOff,
     Loader2,
     PanelLeft,
+    PanelRight,
     Workflow,
     Columns2,
     Rows2,
@@ -17,7 +18,6 @@
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
-  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import ModelSelector from './ModelSelector.svelte';
 
   let isPickingFolder = $state(false);
@@ -257,29 +257,26 @@
   <!-- Right: Panel Toggles + Session Actions -->
   <div class="flex shrink-0 items-center gap-2">
     <div class="flex items-center gap-1" role="toolbar" aria-label="Session panels">
-      {#each extensionRegistry.contributedPanels as def (def.id)}
-        {@const Icon = def.iconComponent}
-        {@const isOpen = workspaceStore.isOpen(def.id)}
-        <button
-          type="button"
-          onclick={() => {
-            if (workspaceStore.currentView !== 'chat') {
-              workspaceStore.openChatView();
-            }
-            workspaceStore.togglePanel(def.id);
-          }}
-          aria-pressed={isOpen}
-          class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition cursor-pointer {isOpen
-            ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-100'
-            : 'border-zinc-700/80 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-700/70'}"
-          title={isOpen ? `Close ${def.label}` : `Open ${def.label}`}
-        >
-          <Icon class="h-3.5 w-3.5 {isOpen ? 'text-indigo-300' : 'text-zinc-400'}" />
-          <span class="hidden xl:inline">{def.label}</span>
-        </button>
-      {/each}
+      <button
+        type="button"
+        onclick={() => {
+          if (workspaceStore.currentView !== 'chat') {
+            workspaceStore.openChatView();
+          }
+          workspaceStore.togglePanelArea();
+        }}
+        aria-pressed={workspaceStore.isPanelOpen}
+        class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer {workspaceStore.isPanelOpen
+          ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-100'
+          : 'border-zinc-700/80 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-700/70'}"
+        title={workspaceStore.isPanelOpen ? 'Close right panel' : 'Open right panel'}
+        aria-label={workspaceStore.isPanelOpen ? 'Close right panel' : 'Open right panel'}
+      >
+        <PanelRight class="h-3.5 w-3.5 {workspaceStore.isPanelOpen ? 'text-indigo-300' : 'text-zinc-400'}" />
+        <span class="hidden sm:inline">Panel</span>
+      </button>
 
-      {#if workspaceStore.hasPanels}
+      {#if workspaceStore.isPanelOpen}
         {@const toLabel =
           workspaceStore.orientation === 'vertical'
             ? 'Switch to top/bottom split'
