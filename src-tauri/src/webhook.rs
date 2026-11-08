@@ -67,6 +67,8 @@ pub struct ForwarderInfo {
     pub port: u16,
     pub pid: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub ws_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -251,6 +253,10 @@ struct ReceiverState {
     app: AppHandle,
     secret: Arc<String>,
     repo: Arc<String>,
+    state_tx: Arc<watch::Sender<&'static str>>,
+    inner: Arc<Inner>,
+    id: u64,
+    base: ForwarderInfo,
 }
 
 async fn receive_webhook(
@@ -268,6 +274,34 @@ async fn receive_webhook(
         return StatusCode::BAD_REQUEST;
     };
     let event = header_str(&headers, "x-github-event").unwrap_or_else(|| "unknown".into());
+    let ws_url = s(&payload, "/hook/ws_url");
+
+    let promoted = st.state_tx.send_if_modified(|curr| {
+        if *curr == "starting" {
+            *curr = "running";
+            true
+        } else {
+            false
+        }
+    });
+    if promoted || ws_url.is_some() {
+        let mut info = st.base.clone();
+        info.state = "running".into();
+        if ws_url.is_some() {
+            info.ws_url = ws_url.clone();
+        }
+        if let Some(a) = st.inner.active.lock().await.as_mut()
+            && a.id == st.id
+        {
+            a.info.state = "running".into();
+            if ws_url.is_some() {
+                a.info.ws_url = ws_url;
+            }
+            info = a.info.clone();
+        }
+        let _ = st.app.emit("github:forwarder", &info);
+    }
+
     let repo = s(&payload, "/repository/full_name").or_else(|| Some((*st.repo).clone()));
     let _ = st.app.emit(
         "github:webhook",
@@ -394,9 +428,6 @@ impl WebhookManager {
     ) -> Result<ForwarderInfo, String> {
         let _guard = self.inner.start_guard.lock().await;
 
-        if self.inner.active.lock().await.is_some() {
-            return Err("A webhook forwarder is already running; stop it first".into());
-        }
         if !is_valid_repo_slug(&repo) {
             return Err(format!(
                 "Invalid repository (expected owner/name): {}",
@@ -404,6 +435,23 @@ impl WebhookManager {
             ));
         }
         validate_events(&events)?;
+
+        // If already running/starting for the exact same repo, return the active info.
+        // If running for another repo, stop the previous forwarder before switching.
+        let prev_active = {
+            let mut active_guard = self.inner.active.lock().await;
+            if let Some(existing) = active_guard.as_ref()
+                && existing.info.repo.eq_ignore_ascii_case(&repo)
+                && (existing.info.state == "running" || existing.info.state == "starting")
+            {
+                return Ok(existing.info.clone());
+            }
+            active_guard.take()
+        };
+        if let Some(old) = prev_active {
+            let _ = old.stop_tx.send(());
+            let _ = old.task.await;
+        }
 
         if !webhook_extension_installed().await {
             if install_extension {
@@ -424,19 +472,9 @@ impl WebhookManager {
             .local_addr()
             .map_err(|e| format!("Failed to read webhook server address: {}", e))?
             .port();
-        let app_router = router(ReceiverState {
-            app: app.clone(),
-            secret: Arc::new(secret.clone()),
-            repo: Arc::new(repo.clone()),
-        });
-        let (server_shutdown_tx, server_shutdown_rx) = oneshot::channel::<()>();
-        let server_task = tokio::spawn(async move {
-            let _ = axum::serve(listener, app_router)
-                .with_graceful_shutdown(async move {
-                    let _ = server_shutdown_rx.await;
-                })
-                .await;
-        });
+        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        let (state_tx, mut state_rx) = watch::channel::<&'static str>("starting");
+        let state_tx = Arc::new(state_tx);
 
         // `gh webhook forward` -> http://127.0.0.1:<port>/webhook
         let args: Vec<String> = vec![
@@ -449,13 +487,11 @@ impl WebhookManager {
             "--url".into(),
             format!("http://127.0.0.1:{}/webhook", port),
             "--secret".into(),
-            secret,
+            secret.clone(),
         ];
         let mut child = match gh_command(&args, None).spawn() {
             Ok(c) => c,
             Err(e) => {
-                let _ = server_shutdown_tx.send(());
-                let _ = server_task.await;
                 return Err(format!("Failed to spawn `gh webhook forward`: {}", e));
             }
         };
@@ -466,10 +502,28 @@ impl WebhookManager {
             events: events.clone(),
             port,
             pid: child.id(),
+            ws_url: None,
             error: None,
         };
-        let (state_tx, mut state_rx) = watch::channel::<&'static str>("starting");
-        let state_tx = Arc::new(state_tx);
+
+        let app_router = router(ReceiverState {
+            app: app.clone(),
+            secret: Arc::new(secret),
+            repo: Arc::new(repo.clone()),
+            state_tx: state_tx.clone(),
+            inner: self.inner.clone(),
+            id,
+            base: base.clone(),
+        });
+        let (server_shutdown_tx, server_shutdown_rx) = oneshot::channel::<()>();
+        let server_task = tokio::spawn(async move {
+            let _ = axum::serve(listener, app_router)
+                .with_graceful_shutdown(async move {
+                    let _ = server_shutdown_rx.await;
+                })
+                .await;
+        });
+
         let tail: TailBuf = Arc::default();
 
         let mut readers = Vec::new();
@@ -494,7 +548,6 @@ impl WebhookManager {
             ));
         }
 
-        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let (stop_tx, stop_rx) = oneshot::channel::<()>();
         let task = tokio::spawn(supervise(
             app.clone(),

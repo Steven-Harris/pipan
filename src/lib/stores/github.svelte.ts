@@ -73,6 +73,7 @@ class GithubStore {
 	listError = $state<string | null>(null);
 
 	selectedPrNumber = $state<number | null>(null);
+	selectedPrRepo = $state<string | null>(null);
 	selectedPrDetail = $state<GhPullRequestDetail | null>(null);
 	selectedPrChecks = $state<GhCheck[]>([]);
 	selectedPrDiff = $state<PrDiffFile[]>([]);
@@ -94,6 +95,7 @@ class GithubStore {
 
 	forwarder = $state<ForwarderInfo | null>(null);
 	forwarderBusy = $state<boolean>(false);
+	autoConnectWebhook = $state<boolean>(true);
 	recentWebhooks = $state<WebhookEvent[]>([]);
 
 	readonly allViews = $derived.by((): GithubView[] => [
@@ -106,10 +108,56 @@ class GithubStore {
 			this.allViews.find((v) => v.id === this.activeViewId) ?? BUILTIN_GITHUB_VIEWS[3]
 	);
 
+	/** Repo filter used when listing PRs (`null` = search across all owned & codeowner repos). */
+	readonly listRepoFilter = $derived.by((): string | null => {
+		const override = this.repoOverride.trim();
+		return override || null;
+	});
+
+	/** Effective repo for the currently selected PR or active webhook tunnel. */
 	readonly effectiveRepo = $derived.by((): string | null => {
+		if (this.selectedPrRepo) return this.selectedPrRepo;
+		if (this.selectedPrDetail?.repo) return this.selectedPrDetail.repo;
 		const override = this.repoOverride.trim();
 		if (override) return override;
-		return this.detectedRepo;
+		if (this.detectedRepo) return this.detectedRepo;
+		return this.pullRequests.find((p) => p.repo)?.repo ?? null;
+	});
+
+	readonly availableRepos = $derived.by((): string[] => {
+		const set = new Set<string>();
+		if (this.detectedRepo) set.add(this.detectedRepo);
+		if (this.repoOverride.trim()) set.add(this.repoOverride.trim());
+		if (this.selectedPrRepo) set.add(this.selectedPrRepo);
+		for (const pr of this.pullRequests) {
+			if (pr.repo) set.add(pr.repo);
+		}
+		return Array.from(set);
+	});
+
+	readonly filteredPullRequests = $derived.by((): GhPullRequest[] => {
+		if (!this.listRepoFilter || this.listRepoFilter === 'all') {
+			return this.pullRequests;
+		}
+		return this.pullRequests.filter((pr) => pr.repo === this.listRepoFilter);
+	});
+
+	readonly isSelectedPrAuthoredByViewer = $derived.by((): boolean => {
+		const viewer = this.status?.account?.trim().toLowerCase();
+		const rawAuthor = this.selectedPrDetail?.author?.login?.trim().toLowerCase();
+		if (!viewer || !rawAuthor) return false;
+		const normalizedAuthor = rawAuthor.replace(/^app\//, '');
+		return viewer === rawAuthor || viewer === normalizedAuthor;
+	});
+
+	readonly allowedMergeMethods = $derived.by((): PrMergeMethod[] => {
+		const detail = this.selectedPrDetail;
+		if (!detail) return ['squash', 'merge', 'rebase'];
+		const methods: PrMergeMethod[] = [];
+		if (detail.squashMergeAllowed !== false) methods.push('squash');
+		if (detail.mergeCommitAllowed !== false) methods.push('merge');
+		if (detail.rebaseMergeAllowed !== false) methods.push('rebase');
+		return methods.length > 0 ? methods : ['squash'];
 	});
 
 	readonly effectiveCwd = $derived.by((): string | null => {
@@ -152,6 +200,9 @@ class GithubStore {
 
 		if (this.status?.installed && this.status?.authenticated) {
 			await this.refreshPrList();
+			if (this.autoConnectWebhook && this.effectiveRepo) {
+				void this.ensureWebhookForwarder(this.effectiveRepo);
+			}
 		}
 	}
 
@@ -163,8 +214,50 @@ class GithubStore {
 		this.initialized = false;
 	}
 
+	private applyOptimisticCiWebhook(ev: WebhookEvent): void {
+		if (ev.summary.category !== 'ci' || !ev.summary.title) return;
+		const rawState = (ev.summary.state ?? 'PENDING').toUpperCase();
+		let bucket: GhCheck['bucket'] = 'pending';
+		if (rawState === 'SUCCESS' || rawState === 'NEUTRAL') {
+			bucket = 'pass';
+		} else if (
+			rawState === 'FAILURE' ||
+			rawState === 'ERROR' ||
+			rawState === 'TIMED_OUT' ||
+			rawState === 'ACTION_REQUIRED' ||
+			rawState === 'CANCELLED'
+		) {
+			bucket = 'fail';
+		} else if (rawState === 'SKIPPED') {
+			bucket = 'skipping';
+		}
+
+		const idx = this.selectedPrChecks.findIndex(
+			(c) => c.name.toLowerCase() === ev.summary.title!.toLowerCase()
+		);
+		const updatedItem: GhCheck = {
+			name: ev.summary.title,
+			state: rawState,
+			bucket,
+			workflow: idx >= 0 ? this.selectedPrChecks[idx].workflow : ev.event,
+			link: ev.summary.url ?? (idx >= 0 ? this.selectedPrChecks[idx].link : ''),
+			event: idx >= 0 ? this.selectedPrChecks[idx].event : 'webhook',
+			startedAt: idx >= 0 ? this.selectedPrChecks[idx].startedAt : new Date().toISOString(),
+			completedAt: bucket === 'pending' ? '' : new Date().toISOString()
+		};
+
+		if (idx >= 0) {
+			this.selectedPrChecks = this.selectedPrChecks.map((c, i) => (i === idx ? updatedItem : c));
+		} else {
+			this.selectedPrChecks = [...this.selectedPrChecks, updatedItem];
+		}
+	}
+
 	private handleWebhookEvent(ev: WebhookEvent): void {
 		this.recentWebhooks = [ev, ...this.recentWebhooks.slice(0, 29)];
+		if (ev.event === 'ping') {
+			return;
+		}
 		void this.refreshPrList();
 
 		if (this.selectedPrNumber !== null) {
@@ -173,6 +266,7 @@ class GithubStore {
 				ev.summary.number === this.selectedPrNumber ||
 				ev.summary.category === 'ci';
 			if (matchesPr) {
+				this.applyOptimisticCiWebhook(ev);
 				void this.refreshSelectedPr();
 			}
 		}
@@ -351,6 +445,9 @@ class GithubStore {
 		if (this.selectedPrNumber !== null) {
 			void this.refreshSelectedPr();
 		}
+		if (this.autoConnectWebhook && this.effectiveRepo) {
+			void this.ensureWebhookForwarder(this.effectiveRepo);
+		}
 	}
 
 	async refreshPrList(explicitQuery?: string): Promise<void> {
@@ -363,7 +460,7 @@ class GithubStore {
 		try {
 			await this.detectWorkspaceRepo();
 			const query = this.searchQuery.trim();
-			const repo = this.effectiveRepo;
+			const repo = this.listRepoFilter;
 			const cwd = this.effectiveCwd;
 
 			// When the search query already specifies `is:closed`, `is:merged`, or `state:...`,
@@ -387,17 +484,31 @@ class GithubStore {
 		}
 	}
 
-	async selectPr(prNumber: number | null): Promise<void> {
+	async selectPr(prNumber: number | null, repo?: string | null): Promise<void> {
 		this.selectedPrNumber = prNumber;
 		this.detailError = null;
 		this.actionFeedback = null;
 		this.draftReviewComments = [];
 		if (prNumber === null) {
+			this.selectedPrRepo = null;
 			this.selectedPrDetail = null;
 			this.selectedPrChecks = [];
 			this.selectedPrDiff = [];
 			this.selectedPrReviewComments = [];
 			return;
+		}
+		const matchedPr = this.pullRequests.find(
+			(p) => p.number === prNumber && (!repo || p.repo === repo)
+		);
+		this.selectedPrRepo =
+			repo?.trim() ||
+			matchedPr?.repo ||
+			this.repoOverride.trim() ||
+			this.detectedRepo ||
+			null;
+
+		if (this.autoConnectWebhook && this.selectedPrRepo) {
+			void this.ensureWebhookForwarder(this.selectedPrRepo);
 		}
 		await this.refreshSelectedPr();
 	}
@@ -559,6 +670,15 @@ class GithubStore {
 		const prNumber = this.selectedPrNumber;
 		if (prNumber === null) return false;
 
+		if (this.isSelectedPrAuthoredByViewer && (event === 'APPROVE' || event === 'REQUEST_CHANGES')) {
+			this.actionFeedback = {
+				type: 'error',
+				message:
+					'GitHub does not allow approving or requesting changes on a pull request you created.'
+			};
+			return false;
+		}
+
 		this.submittingReview = true;
 		this.actionFeedback = null;
 		try {
@@ -603,9 +723,32 @@ class GithubStore {
 		deleteBranch: boolean;
 		subject?: string;
 		body?: string;
+		admin?: boolean;
 	}): Promise<boolean> {
 		const prNumber = this.selectedPrNumber;
 		if (prNumber === null) return false;
+
+		if (!this.allowedMergeMethods.includes(options.method)) {
+			this.actionFeedback = {
+				type: 'error',
+				message: `Merge method "${options.method}" is not allowed for this repository.`
+			};
+			return false;
+		}
+		if (this.selectedPrDetail?.isDraft) {
+			this.actionFeedback = {
+				type: 'error',
+				message: 'Draft pull requests cannot be merged until marked ready for review.'
+			};
+			return false;
+		}
+		if (this.selectedPrDetail?.mergeable === 'CONFLICTING') {
+			this.actionFeedback = {
+				type: 'error',
+				message: 'Pull request has merge conflicts that must be resolved first.'
+			};
+			return false;
+		}
 
 		this.mergingPr = true;
 		this.actionFeedback = null;
@@ -616,12 +759,13 @@ class GithubStore {
 				deleteBranch: options.deleteBranch,
 				subject: options.subject?.trim() || null,
 				body: options.body?.trim() || null,
+				admin: Boolean(options.admin),
 				repo: this.effectiveRepo ?? null,
 				cwd: this.effectiveCwd ?? null
 			});
 			this.actionFeedback = {
 				type: 'success',
-				message: `Merged PR #${prNumber} via ${options.method}`
+				message: `Merged PR #${prNumber} via ${options.method}${options.admin ? ' (rulesets bypassed with --admin)' : ''}`
 			};
 			await Promise.all([this.loadPrDetail(prNumber), this.refreshPrList()]);
 			return true;
@@ -645,6 +789,31 @@ class GithubStore {
 		}
 	}
 
+	async ensureWebhookForwarder(targetRepo?: string | null): Promise<void> {
+		const repo = (targetRepo ?? this.effectiveRepo)?.trim();
+		if (!repo || this.forwarderBusy || !this.status?.authenticated) return;
+		if (
+			this.forwarder &&
+			this.forwarder.repo.toLowerCase() === repo.toLowerCase() &&
+			(this.forwarder.state === 'running' || this.forwarder.state === 'starting')
+		) {
+			return;
+		}
+		this.forwarderBusy = true;
+		try {
+			const info = await invoke<ForwarderInfo>('start_webhook_forwarder', {
+				repo,
+				events: null,
+				installExtension: true
+			});
+			this.forwarder = info;
+		} catch {
+			// Non-fatal when repo lacks admin webhook permission
+		} finally {
+			this.forwarderBusy = false;
+		}
+	}
+
 	async toggleWebhookForwarder(): Promise<void> {
 		if (this.forwarderBusy) return;
 		this.forwarderBusy = true;
@@ -653,14 +822,16 @@ class GithubStore {
 				this.forwarder &&
 				(this.forwarder.state === 'running' || this.forwarder.state === 'starting')
 			) {
+				this.autoConnectWebhook = false;
 				await invoke('stop_webhook_forwarder');
 				this.forwarder = null;
 			} else {
 				const repo = this.effectiveRepo;
 				if (!repo) {
-					this.listError = 'Set or detect an owner/repo slug before starting live webhooks.';
+					this.listError = 'Select a PR or repository slug before starting live webhooks.';
 					return;
 				}
+				this.autoConnectWebhook = true;
 				const info = await invoke<ForwarderInfo>('start_webhook_forwarder', {
 					repo,
 					events: null,

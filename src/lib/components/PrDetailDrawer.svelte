@@ -19,10 +19,16 @@
 		Rows2,
 		Trash2,
 		ShieldCheck,
-		AlertTriangle
+		ShieldAlert,
+		AlertTriangle,
+		Radio,
+		Lock,
+		Check,
+		AlertCircle
 	} from 'lucide-svelte';
 	import { githubStore } from '#lib/stores/github.svelte.ts';
 	import type {
+		GhCheck,
 		GhPrReviewComment,
 		PrDiffHunk,
 		PrDiffLine,
@@ -30,6 +36,7 @@
 		PrReviewDraftComment,
 		PrReviewEvent
 	} from '#lib/types/github.ts';
+	import PrDiffFileTree from './github/PrDiffFileTree.svelte';
 
 	let commentText = $state('');
 	let mergeMethod = $state<PrMergeMethod>('squash');
@@ -37,6 +44,7 @@
 	let mergeSubject = $state('');
 	let mergeBody = $state('');
 	let showMergeOptions = $state(false);
+	let bypassAdmin = $state(false);
 
 	// Review submission popover state
 	let showReviewPopover = $state(false);
@@ -51,11 +59,23 @@
 	} | null>(null);
 	let inlineDraftBody = $state('');
 
-	// File filter in Files & Review tab
+	// File filter in Files & Review panel
 	let selectedFileFilter = $state<string | null>(null);
 	let showDraftTray = $state(false);
+	let leftTab = $state<'checks' | 'overview'>('checks');
 
 	const pr = $derived(githubStore.selectedPrDetail);
+
+	// Sync mergeMethod with repository defaults when pr detail loads
+	$effect(() => {
+		const allowed = githubStore.allowedMergeMethods;
+		if (allowed.length > 0 && !allowed.includes(mergeMethod)) {
+			mergeMethod = allowed[0];
+		}
+		if (typeof pr?.deleteBranchOnMerge === 'boolean') {
+			deleteBranch = pr.deleteBranchOnMerge;
+		}
+	});
 
 	interface TimelineEntry {
 		id: string;
@@ -223,17 +243,27 @@
 		}
 	}
 
+	const isRulesetBlocked = $derived.by(() => {
+		if (!pr) return false;
+		if (pr.mergeStateStatus === 'BLOCKED') return true;
+		if (pr.reviewDecision === 'CHANGES_REQUESTED' || pr.reviewDecision === 'REVIEW_REQUIRED') return true;
+		if (checksSummary.fail > 0) return true;
+		return false;
+	});
+
 	async function handleMerge() {
 		const ok = await githubStore.mergePr({
 			method: mergeMethod,
 			deleteBranch,
 			subject: mergeSubject,
-			body: mergeBody
+			body: mergeBody,
+			admin: bypassAdmin
 		});
 		if (ok) {
 			mergeSubject = '';
 			mergeBody = '';
 			showMergeOptions = false;
+			bypassAdmin = false;
 		}
 	}
 
@@ -269,178 +299,141 @@
 			window.open(url, '_blank', 'noopener,noreferrer');
 		}
 	}
+
+	const isSelfAuthored = $derived(githubStore.isSelectedPrAuthoredByViewer);
+	const allowedMethods = $derived(githubStore.allowedMergeMethods);
+	const isForwarderLive = $derived(githubStore.forwarder?.state === 'running');
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-zinc-950 text-zinc-100">
-	<!-- Drawer Top Header -->
-	<div class="flex shrink-0 flex-col gap-2 border-b border-zinc-800/80 bg-zinc-900/70 px-3 py-2.5">
-		<div class="flex items-start justify-between gap-2">
-			<div class="flex min-w-0 items-start gap-2">
-				<button
-					type="button"
-					onclick={() => void githubStore.selectPr(null)}
-					class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
-					title="Back to PR list"
-					aria-label="Back to PR list"
-				>
-					<ArrowLeft class="h-3.5 w-3.5" />
-				</button>
+	<!-- Top Navigation Header -->
+	<header class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-900/80 px-4 py-2.5 backdrop-blur-md">
+		<div class="flex min-w-0 items-center gap-2.5">
+			<button
+				type="button"
+				onclick={() => void githubStore.selectPr(null)}
+				class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+				title="Close PR view (Return to Chat workspace)"
+				aria-label="Close PR view"
+			>
+				<ArrowLeft class="h-4 w-4" />
+			</button>
 
-				<div class="min-w-0">
-					<div class="flex flex-wrap items-center gap-1.5">
-						<span class="font-mono text-xs text-zinc-400">#{githubStore.selectedPrNumber}</span>
-						{#if pr}
-							{#if pr.state === 'MERGED'}
-								<span class="inline-flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
-									<GitMerge class="h-2.5 w-2.5" />
-									Merged
-								</span>
-							{:else if pr.state === 'CLOSED'}
-								<span class="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
-									Closed
-								</span>
-							{:else if pr.isDraft}
-								<span class="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] font-semibold text-zinc-300">
-									Draft
-								</span>
-							{:else}
-								<span class="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-									<GitPullRequest class="h-2.5 w-2.5" />
-									Open
-								</span>
-							{/if}
+			<div class="min-w-0">
+				<div class="flex flex-wrap items-center gap-1.5">
+					{#if pr?.repo || githubStore.selectedPrRepo}
+						<span class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] font-medium text-zinc-300">
+							{pr?.repo ?? githubStore.selectedPrRepo}
+						</span>
+					{/if}
+					<span class="font-mono text-xs text-zinc-400">#{githubStore.selectedPrNumber}</span>
 
-							{#if pr.reviewDecision === 'APPROVED'}
-								<span class="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-									<ShieldCheck class="h-2.5 w-2.5" />
-									Approved
-								</span>
-							{:else if pr.reviewDecision === 'CHANGES_REQUESTED'}
-								<span class="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-									<AlertTriangle class="h-2.5 w-2.5" />
-									Changes Requested
-								</span>
-							{/if}
+					{#if pr}
+						{#if pr.state === 'MERGED'}
+							<span class="inline-flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
+								<GitMerge class="h-2.5 w-2.5" />
+								Merged
+							</span>
+						{:else if pr.state === 'CLOSED'}
+							<span class="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
+								Closed
+							</span>
+						{:else if pr.isDraft}
+							<span class="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] font-semibold text-zinc-300">
+								Draft
+							</span>
+						{:else}
+							<span class="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+								<GitPullRequest class="h-2.5 w-2.5" />
+								Open
+							</span>
 						{/if}
-					</div>
-					<h3 class="mt-0.5 text-sm font-semibold text-zinc-100 leading-snug">
-						{pr?.title ?? 'Loading pull request…'}
-					</h3>
+
+						{#if pr.reviewDecision === 'APPROVED'}
+							<span class="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+								<ShieldCheck class="h-2.5 w-2.5" />
+								Approved
+							</span>
+						{:else if pr.reviewDecision === 'CHANGES_REQUESTED'}
+							<span class="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+								<AlertTriangle class="h-2.5 w-2.5" />
+								Changes Requested
+							</span>
+						{/if}
+					{/if}
 				</div>
-			</div>
 
-			<div class="flex shrink-0 items-center gap-1">
-				{#if pr?.url}
-					<button
-						type="button"
-						onclick={() => void openExternal(pr.url)}
-						class="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 cursor-pointer"
-						title="Open PR on GitHub"
-					>
-						<ExternalLink class="h-3 w-3" />
-						<span>GitHub</span>
-					</button>
-				{/if}
+				<h2 class="mt-0.5 max-w-2xl truncate text-sm font-semibold text-zinc-100">
+					{pr?.title ?? 'Loading pull request…'}
+				</h2>
+			</div>
+		</div>
+
+		<!-- Right Action Controls (WebSocket status, GitHub link, Refresh) -->
+		<div class="flex shrink-0 items-center gap-2">
+			<!-- Live WebSocket Forwarder Status -->
+			<button
+				type="button"
+				onclick={() => void githubStore.toggleWebhookForwarder()}
+				disabled={githubStore.forwarderBusy}
+				class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition cursor-pointer {isForwarderLive
+					? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+					: githubStore.forwarder?.state === 'starting'
+						? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
+						: 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200'}"
+				title={isForwarderLive
+					? `Live WebSocket tunnel connected (${githubStore.forwarder?.repo}). Live CI/check updates active.`
+					: 'Click to start live GitHub WebSocket forwarder tunnel'}
+			>
+				<Radio class="h-3 w-3 {isForwarderLive ? 'animate-pulse text-emerald-400' : ''}" />
+				<span>
+					{isForwarderLive
+						? 'WebSocket Live'
+						: githubStore.forwarder?.state === 'starting'
+							? 'Connecting…'
+							: 'Connect WebSocket'}
+				</span>
+			</button>
+
+			{#if pr?.url}
 				<button
 					type="button"
-					onclick={() => void githubStore.refreshSelectedPr()}
-					disabled={githubStore.loadingDetail}
-					class="inline-flex h-6 w-6 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 disabled:opacity-50 cursor-pointer"
-					title="Refresh PR"
-					aria-label="Refresh PR"
+					onclick={() => void openExternal(pr.url)}
+					class="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 cursor-pointer"
+					title="Open on GitHub in browser"
 				>
-					<RefreshCw class="h-3 w-3 {githubStore.loadingDetail ? 'animate-spin' : ''}" />
+					<ExternalLink class="h-3.5 w-3.5" />
+					<span class="hidden sm:inline">GitHub</span>
 				</button>
-			</div>
-		</div>
-
-		{#if pr}
-			<div class="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-				<span>by <strong class="text-zinc-200">@{pr.author?.login ?? 'unknown'}</strong></span>
-				<span class="inline-flex items-center gap-1 rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] text-indigo-300">
-					<GitBranch class="h-2.5 w-2.5" />
-					{pr.headRefName} → {pr.baseRefName}
-				</span>
-				{#if typeof pr.additions === 'number' || typeof pr.deletions === 'number'}
-					<span class="font-mono text-[11px]">
-						<span class="text-emerald-400">+{pr.additions ?? 0}</span>
-						<span class="text-rose-400 ml-1">-{pr.deletions ?? 0}</span>
-						{#if typeof pr.changedFiles === 'number'}
-							<span class="text-zinc-500 ml-1">({pr.changedFiles} files)</span>
-						{/if}
-					</span>
-				{/if}
-			</div>
-		{/if}
-
-		<!-- Sub-tabs: Overview & Conversation | Checks & CI | Files & Review -->
-		<div class="mt-1 flex items-center gap-1 border-t border-zinc-800/60 pt-2">
-			<button
-				type="button"
-				onclick={() => (githubStore.activeDetailTab = 'overview')}
-				class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition cursor-pointer {githubStore.activeDetailTab ===
-				'overview'
-					? 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/40'
-					: 'text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200 border border-transparent'}"
-			>
-				<MessageSquare class="h-3.5 w-3.5" />
-				<span>Overview & Conversation</span>
-				{#if timeline.length > 0}
-					<span class="rounded-full bg-zinc-800 px-1.5 py-0.2 text-[10px] text-zinc-300">
-						{timeline.length}
-					</span>
-				{/if}
-			</button>
+			{/if}
 
 			<button
 				type="button"
-				onclick={() => (githubStore.activeDetailTab = 'checks')}
-				class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition cursor-pointer {githubStore.activeDetailTab ===
-				'checks'
-					? 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/40'
-					: 'text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200 border border-transparent'}"
+				onclick={() => void githubStore.refreshSelectedPr()}
+				disabled={githubStore.loadingDetail}
+				class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 disabled:opacity-50 cursor-pointer"
+				title="Refresh pull request metadata, checks, and diff"
+				aria-label="Refresh PR"
 			>
-				<CheckCircle2 class="h-3.5 w-3.5" />
-				<span>Checks & CI</span>
-				{#if githubStore.selectedPrChecks.length > 0}
-					<span class="rounded-full bg-zinc-800 px-1.5 py-0.2 text-[10px] text-zinc-300">
-						{githubStore.selectedPrChecks.length}
-					</span>
-				{/if}
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (githubStore.activeDetailTab = 'files')}
-				class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition cursor-pointer {githubStore.activeDetailTab ===
-				'files'
-					? 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/40'
-					: 'text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200 border border-transparent'}"
-			>
-				<FileCode2 class="h-3.5 w-3.5" />
-				<span>Files & Review</span>
-				{#if githubStore.selectedPrDiff.length > 0}
-					<span class="rounded-full bg-zinc-800 px-1.5 py-0.2 text-[10px] text-zinc-300">
-						{githubStore.selectedPrDiff.length}
-					</span>
-				{/if}
-				{#if githubStore.draftReviewComments.length > 0}
-					<span class="rounded-full bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.2 text-[10px] text-amber-300">
-						{githubStore.draftReviewComments.length} draft
-					</span>
-				{/if}
+				<RefreshCw class="h-3.5 w-3.5 {githubStore.loadingDetail ? 'animate-spin text-indigo-400' : ''}" />
 			</button>
 		</div>
-	</div>
+	</header>
 
 	{#if githubStore.actionFeedback}
 		<div
-			class="flex items-center justify-between border-b px-3 py-1.5 text-xs {githubStore.actionFeedback
-				.type === 'success'
+			class="flex items-center justify-between border-b px-4 py-1.5 text-xs {githubStore.actionFeedback.type === 'success'
 				? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
 				: 'border-rose-500/30 bg-rose-500/10 text-rose-200'}"
 		>
-			<span>{githubStore.actionFeedback.message}</span>
+			<div class="flex items-center gap-1.5">
+				{#if githubStore.actionFeedback.type === 'success'}
+					<Check class="h-3.5 w-3.5 text-emerald-400" />
+				{:else}
+					<AlertCircle class="h-3.5 w-3.5 text-rose-400" />
+				{/if}
+				<span>{githubStore.actionFeedback.message}</span>
+			</div>
 			<button
 				type="button"
 				onclick={() => (githubStore.actionFeedback = null)}
@@ -457,76 +450,237 @@
 		</div>
 	{/if}
 
-	<!-- Tab 1: Overview & Conversation -->
-	{#if githubStore.activeDetailTab === 'overview'}
-		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 space-y-4">
-			{#if githubStore.loadingDetail && !pr}
-				<div class="flex items-center justify-center py-12 text-xs text-zinc-400 gap-2">
-					<Loader2 class="h-4 w-4 animate-spin text-indigo-400" />
-					<span>Loading pull request details…</span>
+	<!-- 2-Column Split: Left = Description + Checks + Merge; Right = Files Tree + Diff Viewer -->
+	<div class="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-zinc-800/80 overflow-hidden">
+		<!-- Left Panel (5 cols on lg, 4 on xl): PR Info, Checks, Merge & Review, Conversation -->
+		<div class="flex min-h-0 flex-col overflow-y-auto lg:col-span-5 xl:col-span-4 bg-zinc-950/60 p-4 space-y-4">
+			<!-- Branch Info Bar -->
+			{#if pr}
+				<div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5 text-xs">
+					<div class="flex items-center gap-1.5">
+						<span class="text-zinc-400">Author:</span>
+						<strong class="text-zinc-200">@{pr.author?.login ?? 'unknown'}</strong>
+						{#if isSelfAuthored}
+							<span class="rounded bg-indigo-500/20 border border-indigo-500/40 px-1.5 py-0.2 text-[10px] font-semibold text-indigo-300">
+								You
+							</span>
+						{/if}
+					</div>
+					<div class="inline-flex items-center gap-1 rounded bg-zinc-950 px-2 py-0.5 font-mono text-[11px] text-indigo-300 border border-zinc-800">
+						<GitBranch class="h-3 w-3" />
+						<span class="truncate max-w-[120px]">{pr.headRefName}</span>
+						<span class="text-zinc-500">→</span>
+						<span>{pr.baseRefName}</span>
+					</div>
 				</div>
-			{:else if pr}
-				<!-- Labels & Metadata -->
-				{#if (pr.labels && pr.labels.length > 0) || (pr.assignees && pr.assignees.length > 0)}
-					<div class="flex flex-wrap items-center gap-1.5">
-						{#each pr.labels ?? [] as label (label.name)}
-							<span
-								class="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-medium text-zinc-200"
-							>
-								{label.name}
-							</span>
-						{/each}
-						{#if pr.assignees && pr.assignees.length > 0}
-							<span class="text-[11px] text-zinc-400 ml-1">
-								Assigned: {pr.assignees.map((a) => `@${a.login}`).join(', ')}
-							</span>
-						{/if}
-					</div>
-				{/if}
+			{/if}
 
-				<!-- Description Card -->
-				<div class="rounded-lg border border-zinc-800/90 bg-zinc-900/50 p-3">
-					<div class="mb-1.5 flex items-center justify-between text-[11px] text-zinc-400">
-						<span class="font-medium text-zinc-300">Description</span>
-						{#if pr.createdAt}
-							<span>Opened {formatTimestamp(pr.createdAt)}</span>
+			<!-- Tab Switcher for Left Column: Checks & Merge / Conversation & Description -->
+			<div class="flex rounded-lg border border-zinc-800 bg-zinc-900/60 p-0.5 text-xs">
+				<button
+					type="button"
+					onclick={() => (leftTab = 'checks')}
+					class="flex-1 rounded-md py-1.5 font-medium transition cursor-pointer {leftTab === 'checks'
+						? 'bg-zinc-800 text-zinc-100 shadow-sm'
+						: 'text-zinc-400 hover:text-zinc-200'}"
+				>
+					Checks & Merge
+					{#if githubStore.selectedPrChecks.length > 0}
+						<span class="ml-1 rounded-full bg-zinc-700 px-1.5 py-0.2 text-[10px] font-mono">
+							{githubStore.selectedPrChecks.length}
+						</span>
+					{/if}
+				</button>
+				<button
+					type="button"
+					onclick={() => (leftTab = 'overview')}
+					class="flex-1 rounded-md py-1.5 font-medium transition cursor-pointer {leftTab === 'overview'
+						? 'bg-zinc-800 text-zinc-100 shadow-sm'
+						: 'text-zinc-400 hover:text-zinc-200'}"
+				>
+					Conversation ({timeline.length})
+				</button>
+			</div>
+
+			{#if leftTab === 'checks'}
+				<!-- Status Checks Section with Live WebSocket indicator -->
+				<div class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3.5 space-y-3">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<CheckCircle2 class="h-4 w-4 text-emerald-400" />
+							<span class="text-xs font-semibold text-zinc-100">Status Checks & CI</span>
+						</div>
+						<div class="flex items-center gap-1.5">
+							<span
+								class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium {isForwarderLive
+									? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+									: 'border-zinc-700 bg-zinc-800 text-zinc-400'}"
+								title={isForwarderLive
+									? 'Receiving check_run and check_suite events via live WebSocket tunnel'
+									: 'WebSocket tunnel not active'}
+							>
+								<Radio class="h-2.5 w-2.5 {isForwarderLive ? 'animate-pulse text-emerald-400' : ''}" />
+								<span>{isForwarderLive ? 'Live WebSocket' : 'Standby'}</span>
+							</span>
+							<button
+								type="button"
+								onclick={() =>
+									githubStore.selectedPrNumber !== null &&
+									void githubStore.loadPrChecks(githubStore.selectedPrNumber)}
+								class="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 cursor-pointer"
+								title="Refresh CI checks"
+							>
+								<RefreshCw class="h-3 w-3 {githubStore.loadingChecks ? 'animate-spin text-indigo-400' : ''}" />
+							</button>
+						</div>
+					</div>
+
+					<!-- Checks Summary Pill Counts -->
+					<div class="flex flex-wrap items-center gap-2 text-xs">
+						<span class="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+							<CheckCircle2 class="h-3 w-3" />
+							{checksSummary.pass} passed
+						</span>
+						{#if checksSummary.fail > 0}
+							<span class="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300">
+								<XCircle class="h-3 w-3" />
+								{checksSummary.fail} failed
+							</span>
+						{/if}
+						{#if checksSummary.pending > 0}
+							<span class="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+								<Clock class="h-3 w-3" />
+								{checksSummary.pending} pending
+							</span>
 						{/if}
 					</div>
-					{#if pr.body && pr.body.trim()}
-						<div class="whitespace-pre-wrap break-words text-xs text-zinc-200 leading-relaxed">
-							{pr.body}
+
+					<!-- Individual Check Rows -->
+					{#if githubStore.loadingChecks && githubStore.selectedPrChecks.length === 0}
+						<div class="flex items-center justify-center py-6 text-xs text-zinc-400 gap-2">
+							<Loader2 class="h-4 w-4 animate-spin text-indigo-400" />
+							<span>Loading CI status checks…</span>
+						</div>
+					{:else if githubStore.selectedPrChecks.length === 0}
+						<div class="rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-4 text-center text-xs text-zinc-500">
+							No CI checks reported for this pull request.
 						</div>
 					{:else}
-						<p class="italic text-xs text-zinc-500">No description provided.</p>
-					{/if}
-				</div>
+						<div class="divide-y divide-zinc-800/70 rounded-lg border border-zinc-800 bg-zinc-950/60 max-h-56 overflow-y-auto">
+							{#each githubStore.selectedPrChecks as check, idx (`${check.workflow}-${check.name}-${idx}`)}
+								<div class="flex items-center justify-between gap-2 p-2 text-xs">
+									<div class="flex min-w-0 items-center gap-2">
+										{#if check.bucket === 'pass'}
+											<CheckCircle2 class="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+										{:else if check.bucket === 'fail' || check.bucket === 'cancel'}
+											<XCircle class="h-3.5 w-3.5 shrink-0 text-rose-400" />
+										{:else}
+											<Clock class="h-3.5 w-3.5 shrink-0 text-amber-400" />
+										{/if}
+										<div class="min-w-0">
+											<div class="truncate font-medium text-zinc-200">{check.name}</div>
+											<div class="truncate text-[10px] text-zinc-500">
+												{check.workflow || 'Check'}
+											</div>
+										</div>
+									</div>
 
-				<!-- Merge Action Bar (when OPEN) -->
-				{#if pr.state === 'OPEN'}
-					<div class="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 space-y-2.5">
-						<div class="flex flex-wrap items-center justify-between gap-2">
-							<div class="flex items-center gap-2">
-								<GitMerge class="h-4 w-4 text-emerald-400" />
-								<div>
-									<div class="text-xs font-medium text-zinc-100">Merge Pull Request</div>
-									<div class="text-[11px] text-zinc-400">
-										Mergeable: <span class="font-mono text-zinc-300">{pr.mergeable ?? 'UNKNOWN'}</span>
-										{#if pr.mergeStateStatus}
-											· Status: <span class="font-mono text-zinc-300">{pr.mergeStateStatus}</span>
+									<div class="flex shrink-0 items-center gap-1.5">
+										<span class="font-mono text-[10px] text-zinc-400">
+											{formatDuration(check.startedAt, check.completedAt)}
+										</span>
+										{#if check.link}
+											<button
+												type="button"
+												onclick={() => void openExternal(check.link)}
+												class="rounded p-0.5 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+												title="Open check logs"
+											>
+												<ExternalLink class="h-3 w-3" />
+											</button>
 										{/if}
 									</div>
 								</div>
-							</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
 
+				<!-- Merge Section with Repo Permissions & Allowed Merge Method Enforcement -->
+				{#if pr && pr.state === 'OPEN'}
+					<div class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3.5 space-y-3">
+						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-2">
+								<GitMerge class="h-4 w-4 text-emerald-400" />
+								<span class="text-xs font-semibold text-zinc-100">Merge Strategy & Rules</span>
+							</div>
+							<span class="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-300">
+								{pr.mergeable ?? 'MERGEABLE'}
+							</span>
+						</div>
+
+						<!-- Allowed Merge Types Grid -->
+						<div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5 space-y-2 text-xs">
+							<div class="text-[11px] font-medium text-zinc-400">Allowed repository merge types:</div>
+							<div class="grid grid-cols-3 gap-1.5 text-center">
+								<div class="rounded border p-1.5 font-mono text-[11px] {allowedMethods.includes('squash')
+									? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300'
+									: 'border-zinc-800 bg-zinc-900 text-zinc-600 line-through'}">
+									Squash
+								</div>
+								<div class="rounded border p-1.5 font-mono text-[11px] {allowedMethods.includes('merge')
+									? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300'
+									: 'border-zinc-800 bg-zinc-900 text-zinc-600 line-through'}">
+									Merge
+								</div>
+								<div class="rounded border p-1.5 font-mono text-[11px] {allowedMethods.includes('rebase')
+									? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300'
+									: 'border-zinc-800 bg-zinc-900 text-zinc-600 line-through'}">
+									Rebase
+								</div>
+							</div>
+						</div>
+
+						<!-- Merge Controls Form -->
+						<div class="space-y-2.5 pt-1">
+							{#if isRulesetBlocked}
+								<div class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-200 space-y-1">
+									<div class="flex items-center gap-1.5 font-medium text-amber-300">
+										<AlertTriangle class="h-4 w-4 shrink-0 text-amber-400" />
+										<span>Ruleset or branch protection rules block normal merge</span>
+									</div>
+									<p class="text-[11px] text-amber-200/80 leading-relaxed">
+										{#if pr.mergeStateStatus === 'BLOCKED'}
+											Merge status is <strong class="font-mono text-amber-300">BLOCKED</strong>.
+										{/if}
+										{#if pr.reviewDecision === 'CHANGES_REQUESTED'}
+											Changes have been requested by a reviewer.
+										{:else if pr.reviewDecision === 'REVIEW_REQUIRED'}
+											Required reviews are missing.
+										{/if}
+										{#if checksSummary.fail > 0}
+											{checksSummary.fail} required check{checksSummary.fail === 1 ? '' : 's'} failed.
+										{/if}
+										GitHub will reject merging unless rulesets are bypassed using <code>--admin</code>.
+									</p>
+								</div>
+							{/if}
+
+							<div class="flex flex-wrap items-center gap-2.5">
 								<select
 									bind:value={mergeMethod}
-									aria-label="Merge method"
-									class="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-indigo-500"
+									aria-label="Select merge method"
+									class="flex-1 min-w-[130px] rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-indigo-500"
 								>
-									<option value="squash">Squash and merge</option>
-									<option value="merge">Create a merge commit</option>
-									<option value="rebase">Rebase and merge</option>
+									{#each allowedMethods as method (method)}
+										<option value={method}>
+											{method === 'squash'
+												? 'Squash and merge'
+												: method === 'merge'
+													? 'Create merge commit'
+													: 'Rebase and merge'}
+										</option>
+									{/each}
 								</select>
 
 								<label class="inline-flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
@@ -538,73 +692,125 @@
 									<span>Delete branch</span>
 								</label>
 
+								<label
+									class="inline-flex items-center gap-1.5 text-xs cursor-pointer {bypassAdmin
+										? 'text-amber-300 font-semibold'
+										: isRulesetBlocked
+											? 'text-amber-400 font-medium'
+											: 'text-zinc-400 hover:text-zinc-200'}"
+									title="Pass --admin to gh pr merge to bypass rulesets and branch protections (requires admin or bypass permission)"
+								>
+									<input
+										type="checkbox"
+										bind:checked={bypassAdmin}
+										class="rounded border-amber-500/50 bg-zinc-950 text-amber-500 focus:ring-amber-500"
+									/>
+									<span class="inline-flex items-center gap-1">
+										<ShieldAlert class="h-3.5 w-3.5 text-amber-400" />
+										<span>Bypass rulesets (<code>--admin</code>)</span>
+									</span>
+								</label>
+							</div>
+
+							<div class="flex items-center justify-between gap-2">
 								<button
 									type="button"
 									onclick={() => (showMergeOptions = !showMergeOptions)}
-									class="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-700 cursor-pointer"
+									class="text-[11px] text-zinc-400 hover:text-zinc-200 underline cursor-pointer"
 								>
-									{showMergeOptions ? 'Hide message' : 'Custom commit'}
+									{showMergeOptions ? 'Hide custom commit' : 'Customize commit message'}
 								</button>
 
 								<button
 									type="button"
 									onclick={() => void handleMerge()}
-									disabled={githubStore.mergingPr}
-									class="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-600/20 px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-600/30 disabled:opacity-50 cursor-pointer"
+									disabled={githubStore.mergingPr || pr.isDraft || pr.mergeable === 'CONFLICTING' || (isRulesetBlocked && !bypassAdmin)}
+									class="inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-1.5 text-xs font-semibold text-white transition disabled:opacity-50 cursor-pointer {bypassAdmin
+										? 'border-amber-500/60 bg-amber-600 hover:bg-amber-500'
+										: 'border-emerald-500/50 bg-emerald-600 hover:bg-emerald-500'}"
+									title={isRulesetBlocked && !bypassAdmin
+										? 'Merge blocked by ruleset or branch protection. Check "Bypass rulesets (--admin)" to merge anyway.'
+										: bypassAdmin
+											? `Bypass rulesets with --admin and merge #${pr.number}`
+											: `Merge #${pr.number}`}
 								>
 									{#if githubStore.mergingPr}
 										<Loader2 class="h-3.5 w-3.5 animate-spin" />
+									{:else if bypassAdmin}
+										<ShieldAlert class="h-3.5 w-3.5" />
 									{:else}
 										<GitMerge class="h-3.5 w-3.5" />
 									{/if}
-									<span>Merge</span>
+									<span>{bypassAdmin ? `Bypass & Merge #${pr.number}` : `Merge #${pr.number}`}</span>
 								</button>
 							</div>
-						</div>
 
-						{#if showMergeOptions}
-							<div class="space-y-2 border-t border-zinc-800 pt-2">
-								<input
-									type="text"
-									bind:value={mergeSubject}
-									placeholder="Optional commit subject override…"
-									class="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-indigo-500"
-								/>
-								<textarea
-									bind:value={mergeBody}
-									rows="2"
-									placeholder="Optional extended commit description…"
-									class="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-indigo-500"
-								></textarea>
-							</div>
-						{/if}
+							{#if isRulesetBlocked && !bypassAdmin}
+								<p class="text-[10px] text-amber-400/90 text-right">
+									Check <strong>Bypass rulesets (<code>--admin</code>)</strong> above to merge.
+								</p>
+							{/if}
+
+							{#if showMergeOptions}
+								<div class="space-y-2 pt-2 border-t border-zinc-800">
+									<input
+										type="text"
+										bind:value={mergeSubject}
+										placeholder="Optional commit subject override…"
+										class="w-full rounded border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500"
+									/>
+									<textarea
+										bind:value={mergeBody}
+										rows="2"
+										placeholder="Optional extended commit description…"
+										class="w-full rounded border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-100 outline-none focus:border-indigo-500"
+									></textarea>
+								</div>
+							{/if}
+						</div>
 					</div>
 				{/if}
+			{/if}
+
+			{#if leftTab === 'overview'}
+				<!-- Description Card -->
+				<div class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3.5 space-y-2">
+					<div class="flex items-center justify-between text-[11px] text-zinc-400">
+						<span class="font-semibold text-zinc-300">Description</span>
+						{#if pr?.createdAt}
+							<span>Opened {formatTimestamp(pr.createdAt)}</span>
+						{/if}
+					</div>
+					{#if pr?.body && pr.body.trim()}
+						<div class="whitespace-pre-wrap break-words text-xs text-zinc-200 leading-relaxed max-h-60 overflow-y-auto">
+							{pr.body}
+						</div>
+					{:else}
+						<p class="italic text-xs text-zinc-500">No description provided.</p>
+					{/if}
+				</div>
 
 				<!-- Conversation Timeline -->
-				<div class="space-y-2">
-					<h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-						Conversation & Reviews ({timeline.length})
-					</h4>
+				<div class="space-y-2.5">
+					<h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+						Timeline ({timeline.length})
+					</h3>
 					{#if timeline.length === 0}
 						<p class="rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-3 text-xs text-zinc-500">
 							No comments or reviews yet.
 						</p>
 					{:else}
 						{#each timeline as item (item.id)}
-							<div class="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5">
-								<div class="mb-1 flex items-center justify-between gap-2 text-[11px]">
+							<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 space-y-1">
+								<div class="flex items-center justify-between gap-2 text-[11px]">
 									<div class="flex items-center gap-1.5">
 										<span class="font-semibold text-zinc-200">@{item.author}</span>
 										{#if item.kind === 'review'}
-											<span
-												class="rounded px-1.5 py-0.5 text-[10px] font-medium {item.reviewState ===
-												'APPROVED'
-													? 'bg-emerald-500/15 text-emerald-300'
-													: item.reviewState === 'CHANGES_REQUESTED'
-														? 'bg-amber-500/15 text-amber-300'
-														: 'bg-zinc-800 text-zinc-300'}"
-											>
+											<span class="rounded px-1.5 py-0.2 text-[10px] font-medium {item.reviewState === 'APPROVED'
+												? 'bg-emerald-500/15 text-emerald-300'
+												: item.reviewState === 'CHANGES_REQUESTED'
+													? 'bg-amber-500/15 text-amber-300'
+													: 'bg-zinc-800 text-zinc-300'}">
 												{item.reviewState}
 											</span>
 										{/if}
@@ -621,8 +827,8 @@
 					{/if}
 				</div>
 
-				<!-- Comment Composer -->
-				<div class="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5 space-y-2">
+				<!-- Post Comment Box -->
+				<div class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
 					<textarea
 						bind:value={commentText}
 						rows="3"
@@ -647,157 +853,45 @@
 				</div>
 			{/if}
 		</div>
-	{/if}
 
-	<!-- Tab 2: Checks & CI -->
-	{#if githubStore.activeDetailTab === 'checks'}
-		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 space-y-3">
-			<!-- Summary Banner -->
-			<div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs">
-				<div class="flex flex-wrap items-center gap-3">
-					<span class="inline-flex items-center gap-1 text-emerald-300">
-						<CheckCircle2 class="h-3.5 w-3.5" />
-						{checksSummary.pass} passed
-					</span>
-					<span class="inline-flex items-center gap-1 text-rose-300">
-						<XCircle class="h-3.5 w-3.5" />
-						{checksSummary.fail} failed
-					</span>
-					<span class="inline-flex items-center gap-1 text-amber-300">
-						<Clock class="h-3.5 w-3.5" />
-						{checksSummary.pending} pending
-					</span>
-				</div>
-				<button
-					type="button"
-					onclick={() =>
-						githubStore.selectedPrNumber !== null &&
-						void githubStore.loadPrChecks(githubStore.selectedPrNumber)}
-					class="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-200 hover:bg-zinc-700 cursor-pointer"
-				>
-					<RefreshCw class="h-3 w-3 {githubStore.loadingChecks ? 'animate-spin' : ''}" />
-					<span>Refresh Checks</span>
-				</button>
-			</div>
-
-			{#if githubStore.loadingChecks && githubStore.selectedPrChecks.length === 0}
-				<div class="flex items-center justify-center py-10 text-xs text-zinc-400 gap-2">
-					<Loader2 class="h-4 w-4 animate-spin text-indigo-400" />
-					<span>Loading CI check runs…</span>
-				</div>
-			{:else if githubStore.selectedPrChecks.length === 0}
-				<div class="rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-6 text-center text-xs text-zinc-500">
-					No CI checks reported for this pull request.
-				</div>
-			{:else}
-				<div class="divide-y divide-zinc-800/70 rounded-lg border border-zinc-800 bg-zinc-900/40">
-					{#each githubStore.selectedPrChecks as check, idx (`${check.workflow}-${check.name}-${idx}`)}
-						<div class="flex items-center justify-between gap-3 px-3 py-2.5 text-xs">
-							<div class="flex min-w-0 items-center gap-2.5">
-								{#if check.bucket === 'pass'}
-									<CheckCircle2 class="h-4 w-4 shrink-0 text-emerald-400" />
-								{:else if check.bucket === 'fail' || check.bucket === 'cancel'}
-									<XCircle class="h-4 w-4 shrink-0 text-rose-400" />
-								{:else}
-									<Clock class="h-4 w-4 shrink-0 text-amber-400" />
-								{/if}
-
-								<div class="min-w-0">
-									<div class="truncate font-medium text-zinc-100">{check.name}</div>
-									<div class="truncate text-[11px] text-zinc-400">
-										{check.workflow || 'Check'}
-										{#if check.event}
-											· <span class="font-mono">{check.event}</span>
-										{/if}
-									</div>
-								</div>
-							</div>
-
-							<div class="flex shrink-0 items-center gap-2.5">
-								<span class="font-mono text-[11px] text-zinc-400">
-									{formatDuration(check.startedAt, check.completedAt)}
-								</span>
-
-								<span
-									class="rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase {check.bucket ===
-									'pass'
-										? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-										: check.bucket === 'fail' || check.bucket === 'cancel'
-											? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-											: 'border-amber-500/30 bg-amber-500/10 text-amber-300'}"
-								>
-									{check.state || check.bucket}
-								</span>
-
-								{#if check.link}
-									<button
-										type="button"
-										onclick={() => void openExternal(check.link)}
-										class="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-200 hover:bg-zinc-700 cursor-pointer"
-										title="Open check logs"
-									>
-										<span>Logs</span>
-										<ExternalLink class="h-3 w-3" />
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-	{/if}
-
-	<!-- Tab 3: Files & Review -->
-	{#if githubStore.activeDetailTab === 'files'}
-		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-			<!-- Files & Review Toolbar -->
-			<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-2">
+		<!-- Right Panel (7 cols on lg, 8 on xl): Changed Files Tree + Unified/Split Diff Viewer -->
+		<div class="flex min-h-0 flex-col overflow-hidden lg:col-span-7 xl:col-span-8 bg-zinc-950">
+			<!-- Top Files & Review Action Bar -->
+			<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-900/60 px-4 py-2">
 				<div class="flex items-center gap-2">
-					<select
-						value={selectedFileFilter ?? ''}
-						onchange={(e) => {
-							const v = (e.currentTarget as HTMLSelectElement).value;
-							selectedFileFilter = v || null;
-						}}
-						aria-label="Filter by changed file"
-						class="max-w-[220px] rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none"
-					>
-						<option value="">All changed files ({githubStore.selectedPrDiff.length})</option>
-						{#each githubStore.selectedPrDiff as f (f.path)}
-							<option value={f.path}>
-								{f.path} (+{f.additions} / -{f.deletions})
-							</option>
-						{/each}
-					</select>
-
-					<!-- Unified / Split Toggle -->
-					<div class="inline-flex rounded-md border border-zinc-700 bg-zinc-950 p-0.5 text-[11px]">
+					<div class="inline-flex rounded-md border border-zinc-700 bg-zinc-950 p-0.5 text-xs">
 						<button
 							type="button"
 							onclick={() => (githubStore.diffViewMode = 'unified')}
-							class="inline-flex items-center gap-1 rounded px-2 py-0.5 cursor-pointer {githubStore.diffViewMode ===
+							class="inline-flex items-center gap-1 rounded px-2.5 py-1 cursor-pointer {githubStore.diffViewMode ===
 							'unified'
-								? 'bg-indigo-600/30 text-indigo-200'
+								? 'bg-indigo-600/30 text-indigo-200 font-medium'
 								: 'text-zinc-400 hover:text-zinc-200'}"
 						>
-							<Rows2 class="h-3 w-3" />
+							<Rows2 class="h-3.5 w-3.5" />
 							<span>Unified</span>
 						</button>
 						<button
 							type="button"
 							onclick={() => (githubStore.diffViewMode = 'split')}
-							class="inline-flex items-center gap-1 rounded px-2 py-0.5 cursor-pointer {githubStore.diffViewMode ===
+							class="inline-flex items-center gap-1 rounded px-2.5 py-1 cursor-pointer {githubStore.diffViewMode ===
 							'split'
-								? 'bg-indigo-600/30 text-indigo-200'
+								? 'bg-indigo-600/30 text-indigo-200 font-medium'
 								: 'text-zinc-400 hover:text-zinc-200'}"
 						>
-							<Columns2 class="h-3 w-3" />
+							<Columns2 class="h-3.5 w-3.5" />
 							<span>Split</span>
 						</button>
 					</div>
+
+					{#if selectedFileFilter}
+						<span class="rounded bg-zinc-800 px-2 py-0.5 font-mono text-xs text-zinc-300">
+							{selectedFileFilter}
+						</span>
+					{/if}
 				</div>
 
+				<!-- Review Submission Popover Trigger & Draft Comments Tray -->
 				<div class="relative flex items-center gap-2">
 					{#if githubStore.draftReviewComments.length > 0}
 						<button
@@ -805,24 +899,24 @@
 							onclick={() => (showDraftTray = !showDraftTray)}
 							class="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-200 hover:bg-amber-500/25 cursor-pointer"
 						>
-							<span>{githubStore.draftReviewComments.length} pending inline</span>
+							<span>{githubStore.draftReviewComments.length} pending comments</span>
 						</button>
 					{/if}
 
 					<button
 						type="button"
 						onclick={() => (showReviewPopover = !showReviewPopover)}
-						class="inline-flex items-center gap-1.5 rounded-md border border-indigo-500/40 bg-indigo-600/25 px-2.5 py-1 text-xs font-semibold text-indigo-100 hover:bg-indigo-600/35 cursor-pointer"
+						class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 cursor-pointer shadow-sm"
 					>
 						<ShieldCheck class="h-3.5 w-3.5" />
-						<span>Submit Review</span>
+						<span>Review changes</span>
 					</button>
 
 					<!-- Submit Review Popover -->
 					{#if showReviewPopover}
-						<div class="absolute right-0 top-full z-30 mt-1.5 w-80 rounded-xl border border-zinc-700 bg-zinc-900 p-3 shadow-2xl space-y-2.5">
+						<div class="absolute right-0 top-full z-30 mt-2 w-80 rounded-xl border border-zinc-700 bg-zinc-900 p-3.5 shadow-2xl space-y-3">
 							<div class="flex items-center justify-between">
-								<span class="text-xs font-semibold text-zinc-100">Finish your review</span>
+								<span class="text-xs font-semibold text-zinc-100">Submit Review</span>
 								<span class="text-[11px] text-zinc-400">
 									{githubStore.draftReviewComments.length} inline comment(s)
 								</span>
@@ -835,22 +929,44 @@
 								class="w-full rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100 outline-none focus:border-indigo-500"
 							></textarea>
 
-							<div class="space-y-1.5 text-xs">
+							<div class="space-y-2 text-xs">
 								<label class="flex items-center gap-2 cursor-pointer">
 									<input type="radio" bind:group={reviewEvent} value="COMMENT" />
-									<span class="text-zinc-200">Comment (general feedback)</span>
+									<span class="text-zinc-200">Comment (General feedback)</span>
 								</label>
-								<label class="flex items-center gap-2 cursor-pointer">
-									<input type="radio" bind:group={reviewEvent} value="APPROVE" />
+
+								<label class="flex items-center gap-2 {isSelfAuthored ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}">
+									<input
+										type="radio"
+										bind:group={reviewEvent}
+										value="APPROVE"
+										disabled={isSelfAuthored}
+									/>
 									<span class="text-emerald-300 font-medium">Approve changes</span>
+									{#if isSelfAuthored}
+										<span class="inline-flex items-center gap-0.5 text-[10px] text-amber-300 font-mono">
+											<Lock class="h-2.5 w-2.5" /> Cannot approve own PR
+										</span>
+									{/if}
 								</label>
-								<label class="flex items-center gap-2 cursor-pointer">
-									<input type="radio" bind:group={reviewEvent} value="REQUEST_CHANGES" />
+
+								<label class="flex items-center gap-2 {isSelfAuthored ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}">
+									<input
+										type="radio"
+										bind:group={reviewEvent}
+										value="REQUEST_CHANGES"
+										disabled={isSelfAuthored}
+									/>
 									<span class="text-amber-300 font-medium">Request changes</span>
+									{#if isSelfAuthored}
+										<span class="inline-flex items-center gap-0.5 text-[10px] text-amber-300 font-mono">
+											<Lock class="h-2.5 w-2.5" /> Cannot request changes on own PR
+										</span>
+									{/if}
 								</label>
 							</div>
 
-							<div class="flex items-center justify-end gap-2 pt-1">
+							<div class="flex items-center justify-end gap-2 pt-1 border-t border-zinc-800">
 								<button
 									type="button"
 									onclick={() => (showReviewPopover = false)}
@@ -861,13 +977,13 @@
 								<button
 									type="button"
 									onclick={() => void handleSubmitReview()}
-									disabled={githubStore.submittingReview}
-									class="inline-flex items-center gap-1 rounded-md border border-indigo-500/50 bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50 cursor-pointer"
+									disabled={githubStore.submittingReview || (isSelfAuthored && reviewEvent !== 'COMMENT')}
+									class="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50 cursor-pointer"
 								>
 									{#if githubStore.submittingReview}
 										<Loader2 class="h-3.5 w-3.5 animate-spin" />
 									{/if}
-									<span>Submit review</span>
+									<span>Submit</span>
 								</button>
 							</div>
 						</div>
@@ -875,9 +991,9 @@
 				</div>
 			</div>
 
-			<!-- Pending Review Draft Tray -->
+			<!-- Pending Inline Review Draft Tray -->
 			{#if showDraftTray && githubStore.draftReviewComments.length > 0}
-				<div class="shrink-0 border-b border-amber-500/30 bg-amber-950/20 px-3 py-2 space-y-1.5 max-h-40 overflow-y-auto">
+				<div class="shrink-0 border-b border-amber-500/30 bg-amber-950/20 px-3 py-2 space-y-1.5 max-h-36 overflow-y-auto">
 					<div class="flex items-center justify-between text-[11px] text-amber-200">
 						<span class="font-semibold">Pending Inline Review Comments</span>
 						<button
@@ -889,7 +1005,7 @@
 						</button>
 					</div>
 					{#each githubStore.draftReviewComments as draft, idx (draft.id ?? idx)}
-						<div class="flex items-start justify-between gap-2 rounded border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs">
+						<div class="flex items-start justify-between gap-2 rounded border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs">
 							<div class="min-w-0">
 								<div class="font-mono text-[10px] text-amber-300">
 									{draft.path}:{draft.line} ({draft.side})
@@ -902,220 +1018,228 @@
 								class="text-zinc-400 hover:text-rose-400 cursor-pointer"
 								title="Remove draft comment"
 							>
-								<Trash2 class="h-3.5 w-3.5" />
+								<Trash2 class="h-3 w-3" />
 							</button>
 						</div>
 					{/each}
 				</div>
 			{/if}
 
-			<!-- Diff Content -->
-			<div class="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
-				<p class="text-[11px] text-zinc-400">
-					Click any diff line to attach an inline review comment, then click <strong>Submit Review</strong>.
-				</p>
+			<!-- Inner Split: Left = Interactive File Tree; Right = Diff Lines with Inline Commenting -->
+			<div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-zinc-800/80 overflow-hidden">
+				<!-- File Tree Sidebar (3 cols on md/lg) -->
+				<div class="md:col-span-4 lg:col-span-3 min-h-0 overflow-hidden">
+					<PrDiffFileTree
+						files={githubStore.selectedPrDiff}
+						selectedPath={selectedFileFilter}
+						onSelectFile={(path: string | null) => (selectedFileFilter = path)}
+					/>
+				</div>
 
-				{#if githubStore.loadingDiff && githubStore.selectedPrDiff.length === 0}
-					<div class="flex items-center justify-center py-12 text-xs text-zinc-400 gap-2">
-						<Loader2 class="h-4 w-4 animate-spin text-indigo-400" />
-						<span>Loading unified diff…</span>
-					</div>
-				{:else if visibleDiffFiles.length === 0}
-					<div class="rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-6 text-center text-xs text-zinc-500">
-						No file diffs available for this pull request.
-					</div>
-				{:else}
-					{#each visibleDiffFiles as file (file.path)}
-						<div class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
-							<!-- File Header -->
-							<div class="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs">
-								<div class="flex min-w-0 items-center gap-2">
-									<FileCode2 class="h-3.5 w-3.5 shrink-0 text-indigo-400" />
-									<span class="truncate font-mono font-medium text-zinc-100">{file.path}</span>
-									<span class="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase text-zinc-300">
-										{file.status}
-									</span>
-								</div>
-								<div class="shrink-0 font-mono text-[11px]">
-									<span class="text-emerald-400">+{file.additions}</span>
-									<span class="text-rose-400 ml-1.5">-{file.deletions}</span>
-								</div>
-							</div>
-
-							{#if file.isBinary}
-								<div class="p-3 text-xs italic text-zinc-500">Binary file modified.</div>
-							{:else if githubStore.diffViewMode === 'unified'}
-								<!-- Unified Diff View -->
-								<div class="overflow-x-auto font-mono text-[11px]">
-									{#each file.hunks as hunk, hIdx (`${file.path}-hunk-${hIdx}`)}
-										<div class="bg-indigo-950/30 px-3 py-1 text-[10px] text-indigo-300 border-y border-zinc-800/60">
-											{hunk.header}
-										</div>
-										{#each hunk.lines as line, lIdx (`${file.path}-${hIdx}-${lIdx}`)}
-											{@const targetSide = line.kind === 'del' ? 'LEFT' : 'RIGHT'}
-											{@const targetLine = line.kind === 'del' ? line.oldLine : line.newLine}
-											{@const existing = existingCommentsForLine(file.path, targetLine, targetSide)}
-											{@const drafts = draftCommentsForLine(file.path, targetLine, targetSide)}
-											{@const isComposing =
-												activeInlineTarget?.path === file.path &&
-												activeInlineTarget?.line === targetLine &&
-												activeInlineTarget?.side === targetSide}
-
-											<div
-												role="button"
-												tabindex="0"
-												onclick={() => openInlineComposer(file.path, targetLine, targetSide)}
-												onkeydown={(e) => {
-													if (e.key === 'Enter') openInlineComposer(file.path, targetLine, targetSide);
-												}}
-												class="group flex items-start px-2 py-0.5 cursor-pointer select-text {line.kind ===
-												'add'
-													? 'bg-emerald-950/30 text-emerald-100 hover:bg-emerald-900/40'
-													: line.kind === 'del'
-														? 'bg-rose-950/30 text-rose-100 hover:bg-rose-900/40'
-														: 'text-zinc-300 hover:bg-zinc-900'}"
-											>
-												<span class="w-10 shrink-0 select-none text-right pr-2 text-zinc-600">
-													{line.oldLine ?? ''}
-												</span>
-												<span class="w-10 shrink-0 select-none text-right pr-2 text-zinc-600">
-													{line.newLine ?? ''}
-												</span>
-												<span class="w-5 shrink-0 select-none text-center text-indigo-400 opacity-0 group-hover:opacity-100">
-													<MessageSquarePlus class="h-3 w-3 inline" />
-												</span>
-												<span class="w-4 shrink-0 select-none">
-													{line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}
-												</span>
-												<span class="whitespace-pre break-all">{line.content}</span>
-											</div>
-
-											{#each existing as c (c.id)}
-												<div class="border-y border-zinc-800 bg-zinc-900/90 px-4 py-2 font-sans text-xs">
-													<div class="flex items-center justify-between text-[11px] text-zinc-400">
-														<span class="font-semibold text-zinc-200">@{c.user?.login ?? 'reviewer'}</span>
-														<span>{formatTimestamp(c.created_at)}</span>
-													</div>
-													<div class="mt-1 whitespace-pre-wrap text-zinc-200">{c.body}</div>
-												</div>
-											{/each}
-
-											{#each drafts as item (item.draft.id ?? item.index)}
-												<div class="border-y border-amber-500/30 bg-amber-950/25 px-4 py-2 font-sans text-xs">
-													<div class="flex items-center justify-between text-[11px] text-amber-300">
-														<span class="font-semibold">Pending review comment (line {item.draft.line})</span>
-														<button
-															type="button"
-															onclick={() => githubStore.removeDraftReviewComment(item.index)}
-															class="text-rose-300 hover:underline cursor-pointer"
-														>
-															Remove
-														</button>
-													</div>
-													<div class="mt-1 whitespace-pre-wrap text-zinc-100">{item.draft.body}</div>
-												</div>
-											{/each}
-
-											{#if isComposing}
-												<div class="border-y border-indigo-500/40 bg-zinc-900 p-3 font-sans space-y-2">
-													<div class="text-[11px] text-indigo-300">
-														Add inline comment on <span class="font-mono">{file.path}:{targetLine}</span> ({targetSide})
-													</div>
-													<textarea
-														bind:value={inlineDraftBody}
-														rows="2"
-														placeholder="Write inline review feedback…"
-														class="w-full rounded border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100 outline-none focus:border-indigo-500"
-													></textarea>
-													<div class="flex justify-end gap-2">
-														<button
-															type="button"
-															onclick={() => (activeInlineTarget = null)}
-															class="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-800 cursor-pointer"
-														>
-															Cancel
-														</button>
-														<button
-															type="button"
-															onclick={submitInlineDraft}
-															disabled={!inlineDraftBody.trim()}
-															class="rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 cursor-pointer"
-														>
-															Add to Review
-														</button>
-													</div>
-												</div>
-											{/if}
-										{/each}
-									{/each}
-								</div>
-							{:else}
-								<!-- Split Diff View -->
-								<div class="overflow-x-auto font-mono text-[11px]">
-									{#each file.hunks as hunk, hIdx (`${file.path}-split-hunk-${hIdx}`)}
-										<div class="bg-indigo-950/30 px-3 py-1 text-[10px] text-indigo-300 border-y border-zinc-800/60">
-											{hunk.header}
-										</div>
-										{#each buildSplitRows(hunk) as row, rIdx (`${file.path}-${hIdx}-row-${rIdx}`)}
-											<div class="grid grid-cols-2 divide-x divide-zinc-800/80">
-												<!-- Left (Old) -->
-												<div
-													role="button"
-													tabindex="0"
-													onclick={() =>
-														row.left?.oldLine &&
-														openInlineComposer(file.path, row.left.oldLine, 'LEFT')}
-													onkeydown={(e) => {
-														if (e.key === 'Enter' && row.left?.oldLine) {
-															openInlineComposer(file.path, row.left.oldLine, 'LEFT');
-														}
-													}}
-													class="flex items-start px-2 py-0.5 cursor-pointer {row.left?.kind === 'del'
-														? 'bg-rose-950/30 text-rose-100 hover:bg-rose-900/40'
-														: 'text-zinc-300 hover:bg-zinc-900'}"
-												>
-													<span class="w-8 shrink-0 select-none text-right pr-2 text-zinc-600">
-														{row.left?.oldLine ?? ''}
-													</span>
-													<span class="w-3 shrink-0 select-none">
-														{row.left?.kind === 'del' ? '-' : ' '}
-													</span>
-													<span class="whitespace-pre break-all">{row.left?.content ?? ''}</span>
-												</div>
-
-												<!-- Right (New) -->
-												<div
-													role="button"
-													tabindex="0"
-													onclick={() =>
-														row.right?.newLine &&
-														openInlineComposer(file.path, row.right.newLine, 'RIGHT')}
-													onkeydown={(e) => {
-														if (e.key === 'Enter' && row.right?.newLine) {
-															openInlineComposer(file.path, row.right.newLine, 'RIGHT');
-														}
-													}}
-													class="flex items-start px-2 py-0.5 cursor-pointer {row.right?.kind === 'add'
-														? 'bg-emerald-950/30 text-emerald-100 hover:bg-emerald-900/40'
-														: 'text-zinc-300 hover:bg-zinc-900'}"
-												>
-													<span class="w-8 shrink-0 select-none text-right pr-2 text-zinc-600">
-														{row.right?.newLine ?? ''}
-													</span>
-													<span class="w-3 shrink-0 select-none">
-														{row.right?.kind === 'add' ? '+' : ' '}
-													</span>
-													<span class="whitespace-pre break-all">{row.right?.content ?? ''}</span>
-												</div>
-											</div>
-										{/each}
-									{/each}
-								</div>
-							{/if}
+				<!-- Diff Code View (9 cols on md/lg) -->
+				<div class="md:col-span-8 lg:col-span-9 min-h-0 overflow-y-auto p-4 space-y-4">
+					{#if githubStore.loadingDiff && githubStore.selectedPrDiff.length === 0}
+						<div class="flex items-center justify-center py-16 text-xs text-zinc-400 gap-2">
+							<Loader2 class="h-5 w-5 animate-spin text-indigo-400" />
+							<span>Loading pull request diffs…</span>
 						</div>
-					{/each}
-				{/if}
+					{:else if visibleDiffFiles.length === 0}
+						<div class="rounded-xl border border-zinc-800/60 bg-zinc-900/30 p-8 text-center text-xs text-zinc-500">
+							No changed files match this filter.
+						</div>
+					{:else}
+						{#each visibleDiffFiles as file (file.path)}
+							<div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+								<!-- File Card Header -->
+								<div class="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs">
+									<div class="flex min-w-0 items-center gap-2">
+										<FileCode2 class="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+										<span class="truncate font-mono font-medium text-zinc-100">{file.path}</span>
+										<span class="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.2 text-[10px] uppercase text-zinc-300">
+											{file.status}
+										</span>
+									</div>
+									<div class="shrink-0 font-mono text-[11px]">
+										<span class="text-emerald-400">+{file.additions}</span>
+										<span class="text-rose-400 ml-1.5">-{file.deletions}</span>
+									</div>
+								</div>
+
+								{#if file.isBinary}
+									<div class="p-4 text-xs italic text-zinc-500">Binary file modified.</div>
+								{:else if githubStore.diffViewMode === 'unified'}
+									<!-- Unified Diff View -->
+									<div class="overflow-x-auto font-mono text-[11px]">
+										{#each file.hunks as hunk, hIdx (`${file.path}-hunk-${hIdx}`)}
+											<div class="bg-indigo-950/30 px-3 py-1 text-[10px] text-indigo-300 border-y border-zinc-800/60 select-none">
+												{hunk.header}
+											</div>
+											{#each hunk.lines as line, lIdx (`${file.path}-${hIdx}-${lIdx}`)}
+												{@const targetSide = line.kind === 'del' ? 'LEFT' : 'RIGHT'}
+												{@const targetLine = line.kind === 'del' ? line.oldLine : line.newLine}
+												{@const existing = existingCommentsForLine(file.path, targetLine, targetSide)}
+												{@const drafts = draftCommentsForLine(file.path, targetLine, targetSide)}
+												{@const isComposing =
+													activeInlineTarget?.path === file.path &&
+													activeInlineTarget?.line === targetLine &&
+													activeInlineTarget?.side === targetSide}
+
+												<div
+													role="button"
+													tabindex="0"
+													onclick={() => openInlineComposer(file.path, targetLine, targetSide)}
+													onkeydown={(e) => {
+														if (e.key === 'Enter') openInlineComposer(file.path, targetLine, targetSide);
+													}}
+													class="group flex items-start px-2 py-0.5 cursor-pointer select-text {line.kind ===
+													'add'
+														? 'bg-emerald-950/30 text-emerald-100 hover:bg-emerald-900/40'
+														: line.kind === 'del'
+															? 'bg-rose-950/30 text-rose-100 hover:bg-rose-900/40'
+															: 'text-zinc-300 hover:bg-zinc-900'}"
+												>
+													<span class="w-10 shrink-0 select-none text-right pr-2 text-zinc-600">
+														{line.oldLine ?? ''}
+													</span>
+													<span class="w-10 shrink-0 select-none text-right pr-2 text-zinc-600">
+														{line.newLine ?? ''}
+													</span>
+													<span class="w-5 shrink-0 select-none text-center text-indigo-400 opacity-0 group-hover:opacity-100">
+														<MessageSquarePlus class="h-3 w-3 inline" />
+													</span>
+													<span class="w-4 shrink-0 select-none">
+														{line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}
+													</span>
+													<span class="whitespace-pre break-all">{line.content}</span>
+												</div>
+
+												{#each existing as c (c.id)}
+													<div class="border-y border-zinc-800 bg-zinc-900/90 px-4 py-2 font-sans text-xs">
+														<div class="flex items-center justify-between text-[11px] text-zinc-400">
+															<span class="font-semibold text-zinc-200">@{c.user?.login ?? 'reviewer'}</span>
+															<span>{formatTimestamp(c.created_at)}</span>
+														</div>
+														<div class="mt-1 whitespace-pre-wrap text-zinc-200">{c.body}</div>
+													</div>
+												{/each}
+
+												{#each drafts as item (item.draft.id ?? item.index)}
+													<div class="border-y border-amber-500/30 bg-amber-950/25 px-4 py-2 font-sans text-xs">
+														<div class="flex items-center justify-between text-[11px] text-amber-300">
+															<span class="font-semibold">Pending review comment (line {item.draft.line})</span>
+															<button
+																type="button"
+																onclick={() => githubStore.removeDraftReviewComment(item.index)}
+																class="text-rose-300 hover:underline cursor-pointer"
+															>
+																Remove
+															</button>
+														</div>
+														<div class="mt-1 whitespace-pre-wrap text-zinc-100">{item.draft.body}</div>
+													</div>
+												{/each}
+
+												{#if isComposing}
+													<div class="border-y border-indigo-500/40 bg-zinc-900 p-3 font-sans space-y-2">
+														<div class="text-[11px] text-indigo-300">
+															Add inline comment on <span class="font-mono">{file.path}:{targetLine}</span> ({targetSide})
+														</div>
+														<textarea
+															bind:value={inlineDraftBody}
+															rows="2"
+															placeholder="Write inline review feedback…"
+															class="w-full rounded border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100 outline-none focus:border-indigo-500"
+														></textarea>
+														<div class="flex justify-end gap-2">
+															<button
+																type="button"
+																onclick={() => (activeInlineTarget = null)}
+																class="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-800 cursor-pointer"
+															>
+																Cancel
+															</button>
+															<button
+																type="button"
+																onclick={submitInlineDraft}
+																disabled={!inlineDraftBody.trim()}
+																class="rounded bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 cursor-pointer"
+															>
+																Add to Review
+															</button>
+														</div>
+													</div>
+												{/if}
+											{/each}
+										{/each}
+									</div>
+								{:else}
+									<!-- Split Diff View -->
+									<div class="overflow-x-auto font-mono text-[11px]">
+										{#each file.hunks as hunk, hIdx (`${file.path}-split-hunk-${hIdx}`)}
+											<div class="bg-indigo-950/30 px-3 py-1 text-[10px] text-indigo-300 border-y border-zinc-800/60 select-none">
+												{hunk.header}
+											</div>
+											{#each buildSplitRows(hunk) as row, rIdx (`${file.path}-${hIdx}-row-${rIdx}`)}
+												<div class="grid grid-cols-2 divide-x divide-zinc-800/80">
+													<!-- Left (Old) -->
+													<div
+														role="button"
+														tabindex="0"
+														onclick={() =>
+															row.left?.oldLine &&
+															openInlineComposer(file.path, row.left.oldLine, 'LEFT')}
+														onkeydown={(e) => {
+															if (e.key === 'Enter' && row.left?.oldLine) {
+																openInlineComposer(file.path, row.left.oldLine, 'LEFT');
+															}
+														}}
+														class="flex items-start px-2 py-0.5 cursor-pointer {row.left?.kind === 'del'
+															? 'bg-rose-950/30 text-rose-100 hover:bg-rose-900/40'
+															: 'text-zinc-300 hover:bg-zinc-900'}"
+													>
+														<span class="w-8 shrink-0 select-none text-right pr-2 text-zinc-600">
+															{row.left?.oldLine ?? ''}
+														</span>
+														<span class="w-3 shrink-0 select-none">
+															{row.left?.kind === 'del' ? '-' : ' '}
+														</span>
+														<span class="whitespace-pre break-all">{row.left?.content ?? ''}</span>
+													</div>
+
+													<!-- Right (New) -->
+													<div
+														role="button"
+														tabindex="0"
+														onclick={() =>
+															row.right?.newLine &&
+															openInlineComposer(file.path, row.right.newLine, 'RIGHT')}
+														onkeydown={(e) => {
+															if (e.key === 'Enter' && row.right?.newLine) {
+																openInlineComposer(file.path, row.right.newLine, 'RIGHT');
+															}
+														}}
+														class="flex items-start px-2 py-0.5 cursor-pointer {row.right?.kind === 'add'
+															? 'bg-emerald-950/30 text-emerald-100 hover:bg-emerald-900/40'
+															: 'text-zinc-300 hover:bg-zinc-900'}"
+													>
+														<span class="w-8 shrink-0 select-none text-right pr-2 text-zinc-600">
+															{row.right?.newLine ?? ''}
+														</span>
+														<span class="w-3 shrink-0 select-none">
+															{row.right?.kind === 'add' ? '+' : ' '}
+														</span>
+														<span class="whitespace-pre break-all">{row.right?.content ?? ''}</span>
+													</div>
+												</div>
+											{/each}
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/each}
+					{/if}
+				</div>
 			</div>
 		</div>
-	{/if}
+	</div>
 </div>

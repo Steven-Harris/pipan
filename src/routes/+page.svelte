@@ -4,6 +4,7 @@
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { flowStore } from '#lib/stores/flow.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
+  import { githubStore } from '#lib/stores/github.svelte.ts';
   import { doctorStore } from '#lib/stores/doctor.svelte.ts';
   import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import SessionHeader from '#lib/components/SessionHeader.svelte';
@@ -13,6 +14,7 @@
   import CostAnalyticsPage from '#lib/components/CostAnalyticsPage.svelte';
   import ExtensionsManagerPage from '#lib/components/ExtensionsManagerPage.svelte';
   import ExtensionContributionHost from '#lib/components/ExtensionContributionHost.svelte';
+  import PrDetailDrawer from '#lib/components/PrDetailDrawer.svelte';
   import DoctorModal from '#lib/components/DoctorModal.svelte';
   import SettingsAuthModal from '#lib/components/SettingsAuthModal.svelte';
 
@@ -22,6 +24,13 @@
     chatStore.init();
     flowStore.init();
     void doctorStore.init();
+  });
+
+  // Auto-close open PR drawer if navigating to any non-chat view/extension
+  $effect(() => {
+    if (workspaceStore.currentView !== 'chat' && githubStore.selectedPrNumber !== null) {
+      void githubStore.selectPr(null);
+    }
   });
 </script>
 
@@ -69,6 +78,8 @@
         {:else}
           <WorkspaceLayout />
         {/if}
+      {:else if githubStore.selectedPrNumber !== null}
+        <PrDetailDrawer />
       {:else}
         <WorkspaceLayout />
       {/if}

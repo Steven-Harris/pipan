@@ -328,7 +328,7 @@ pub async fn gh_pr_view(
     run_gh_json(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
 }
 
-/// `gh pr list --json …`.
+/// `gh pr list --json …` (single repo) or cross-repo GraphQL search when `repo` is omitted.
 #[tauri::command]
 pub async fn gh_pr_list(
     cwd: Option<String>,
@@ -338,8 +338,401 @@ pub async fn gh_pr_list(
     limit: Option<u32>,
     fields: Option<Vec<String>>,
 ) -> Result<Value, String> {
-    let args = build_pr_list_args(repo, state, search, limit, fields)?;
-    run_gh_json(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+    let resolved_cwd = resolve_cwd(cwd.as_deref())?;
+    let trimmed_repo = repo.as_deref().map(str::trim).filter(|r| !r.is_empty());
+
+    if trimmed_repo.is_none() && fields.is_none() {
+        match search_prs_across_repos(
+            state.as_deref(),
+            search.as_deref(),
+            limit.unwrap_or(50),
+            resolved_cwd.as_deref(),
+        )
+        .await
+        {
+            Ok(list) => return Ok(list),
+            Err(err) => {
+                if resolved_cwd.is_none() {
+                    return Err(err);
+                }
+            }
+        }
+    }
+
+    let args = build_pr_list_args(repo.clone(), state, search, limit, fields)?;
+    let mut val = run_gh_json(&args, resolved_cwd.as_deref()).await?;
+    if let (Some(r), Some(arr)) = (trimmed_repo, val.as_array_mut()) {
+        for item in arr {
+            if let Some(obj) = item.as_object_mut() {
+                obj.entry("repo".to_string())
+                    .or_insert_with(|| Value::String(r.to_string()));
+            }
+        }
+    }
+    Ok(val)
+}
+
+const PR_GQL_FRAGMENT: &str = r#"
+fragment PrFields on PullRequest {
+  number
+  title
+  state
+  url
+  isDraft
+  headRefName
+  baseRefName
+  reviewDecision
+  updatedAt
+  additions
+  deletions
+  changedFiles
+  repository {
+    nameWithOwner
+  }
+  author {
+    login
+  }
+  labels(first: 10) {
+    nodes {
+      name
+      color
+    }
+  }
+  assignees(first: 10) {
+    nodes {
+      login
+    }
+  }
+  reviewRequests(first: 10) {
+    nodes {
+      requestedReviewer {
+        ... on User {
+          login
+        }
+        ... on Team {
+          name
+          slug
+        }
+      }
+    }
+  }
+  commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          state
+        }
+      }
+    }
+  }
+}
+"#;
+
+pub fn has_explicit_search_scope(query: &str) -> bool {
+    let lower = query.to_ascii_lowercase();
+    [
+        "repo:",
+        "user:",
+        "org:",
+        "author:",
+        "assignee:",
+        "review-requested:",
+        "team-review-requested:",
+        "involves:",
+        "mentions:",
+    ]
+    .iter()
+    .any(|prefix| lower.contains(prefix))
+}
+
+pub fn normalize_pr_search_base(state: Option<&str>, search: Option<&str>) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let raw = search.map(str::trim).unwrap_or("");
+    let lower = raw.to_ascii_lowercase();
+
+    if !lower.contains("is:pr") && !lower.contains("type:pr") {
+        parts.push("is:pr".to_string());
+    }
+
+    let has_state = lower.contains("is:open")
+        || lower.contains("is:closed")
+        || lower.contains("is:merged")
+        || lower.contains("state:open")
+        || lower.contains("state:closed")
+        || lower.contains("state:merged");
+
+    if !has_state {
+        match state.map(str::trim) {
+            Some("closed") => parts.push("is:closed".to_string()),
+            Some("merged") => parts.push("is:merged".to_string()),
+            Some("all") => {}
+            _ => parts.push("is:open".to_string()),
+        }
+    }
+
+    if !raw.is_empty() {
+        parts.push(raw.to_string());
+    }
+
+    parts.join(" ")
+}
+
+fn is_plain_state_only_query(query: &str) -> bool {
+    query.split_whitespace().all(|tok| {
+        let t = tok.to_ascii_lowercase();
+        matches!(
+            t.as_str(),
+            "is:pr"
+                | "type:pr"
+                | "is:open"
+                | "is:closed"
+                | "is:merged"
+                | "state:open"
+                | "state:closed"
+                | "state:merged"
+                | "sort:updated-desc"
+        )
+    })
+}
+
+fn normalize_gql_pr_node(node: &Value) -> Option<Value> {
+    let obj = node.as_object()?;
+    let number = obj.get("number")?.as_u64()?;
+    let title = obj.get("title")?.as_str().unwrap_or("").to_string();
+    let state = obj.get("state")?.as_str().unwrap_or("OPEN").to_string();
+    let url = obj.get("url")?.as_str().unwrap_or("").to_string();
+    let repo = node
+        .pointer("/repository/nameWithOwner")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let author_login = node
+        .pointer("/author/login")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+
+    let labels: Vec<Value> = node
+        .pointer("/labels/nodes")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|l| {
+                    let name = l.get("name")?.as_str()?;
+                    Some(json!({
+                        "name": name,
+                        "color": l.get("color").and_then(Value::as_str),
+                    }))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let assignees: Vec<Value> = node
+        .pointer("/assignees/nodes")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| {
+                    let login = a.get("login")?.as_str()?;
+                    Some(json!({ "login": login }))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let review_requests: Vec<Value> = node
+        .pointer("/reviewRequests/nodes")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|r| {
+                    let rev = r.get("requestedReviewer")?;
+                    let login = rev.get("login").and_then(Value::as_str);
+                    let slug = rev.get("slug").and_then(Value::as_str);
+                    let name = rev.get("name").and_then(Value::as_str);
+                    if login.is_none() && slug.is_none() && name.is_none() {
+                        return None;
+                    }
+                    Some(json!({
+                        "login": login.or(slug),
+                        "name": name,
+                        "slug": slug,
+                    }))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let rollup_state = node
+        .pointer("/commits/nodes/0/commit/statusCheckRollup/state")
+        .and_then(Value::as_str);
+    let status_check_rollup = match rollup_state {
+        Some(st) if !st.is_empty() => json!([{ "state": st }]),
+        _ => json!([]),
+    };
+
+    let review_decision = obj
+        .get("reviewDecision")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(|s| Value::String(s.to_string()))
+        .unwrap_or(Value::Null);
+
+    Some(json!({
+        "number": number,
+        "title": title,
+        "state": state,
+        "url": url,
+        "repo": if repo.is_empty() { Value::Null } else { Value::String(repo) },
+        "headRefName": obj.get("headRefName").and_then(Value::as_str).unwrap_or(""),
+        "baseRefName": obj.get("baseRefName").and_then(Value::as_str).unwrap_or(""),
+        "author": {
+            "login": author_login,
+        },
+        "isDraft": obj.get("isDraft").and_then(Value::as_bool).unwrap_or(false),
+        "reviewDecision": review_decision,
+        "statusCheckRollup": status_check_rollup,
+        "labels": labels,
+        "assignees": assignees,
+        "reviewRequests": review_requests,
+        "updatedAt": obj.get("updatedAt").and_then(Value::as_str).unwrap_or(""),
+        "additions": obj.get("additions").and_then(Value::as_u64).unwrap_or(0),
+        "deletions": obj.get("deletions").and_then(Value::as_u64).unwrap_or(0),
+        "changedFiles": obj.get("changedFiles").and_then(Value::as_u64).unwrap_or(0),
+    }))
+}
+
+async fn search_prs_across_repos(
+    state: Option<&str>,
+    search: Option<&str>,
+    limit: u32,
+    cwd: Option<&Path>,
+) -> Result<Value, String> {
+    let clamped = limit.clamp(1, 100);
+    let base = normalize_pr_search_base(state, search);
+
+    let mut raw_nodes: Vec<Value> = Vec::new();
+
+    if has_explicit_search_scope(&base) {
+        let query_doc = format!(
+            "{PR_GQL_FRAGMENT}\nquery($q: String!, $limit: Int!) {{\n  single: search(query: $q, type: ISSUE, first: $limit) {{\n    nodes {{ ...PrFields }}\n  }}\n}}"
+        );
+        let args = to_args(&[
+            "api",
+            "graphql",
+            "-f",
+            &format!("query={query_doc}"),
+            "-f",
+            &format!("q={base}"),
+            "-F",
+            &format!("limit={clamped}"),
+        ]);
+        let res = run_gh_json(&args, cwd).await?;
+        if let Some(arr) = res.pointer("/data/single/nodes").and_then(Value::as_array) {
+            raw_nodes.extend(arr.iter().cloned());
+        }
+    } else {
+        let q_owned = format!("{base} user:@me");
+        let q_review = format!("{base} review-requested:@me");
+        let q_involved = format!("{base} involves:@me");
+        let include_collab = is_plain_state_only_query(&base);
+        let lower_base = base.to_ascii_lowercase();
+        let gql_states = if lower_base.contains("is:merged") || lower_base.contains("state:merged")
+        {
+            "[MERGED]"
+        } else if lower_base.contains("is:closed") || lower_base.contains("state:closed") {
+            "[CLOSED, MERGED]"
+        } else {
+            "[OPEN]"
+        };
+
+        let collab_block = if include_collab {
+            format!(
+                "collab: viewer {{\n    repositories(first: 15, affiliations: [COLLABORATOR, ORGANIZATION_MEMBER], isArchived: false, orderBy: {{field: PUSHED_AT, direction: DESC}}) {{\n      nodes {{\n        viewerPermission\n        pullRequests(states: {gql_states}, first: 10, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{\n          nodes {{ ...PrFields }}\n        }}\n      }}\n    }}\n  }}"
+            )
+        } else {
+            String::new()
+        };
+
+        let query_doc = format!(
+            "{PR_GQL_FRAGMENT}\nquery($qOwned: String!, $qReview: String!, $qInvolved: String!, $limit: Int!) {{\n  owned: search(query: $qOwned, type: ISSUE, first: $limit) {{\n    nodes {{ ...PrFields }}\n  }}\n  reviewRequested: search(query: $qReview, type: ISSUE, first: $limit) {{\n    nodes {{ ...PrFields }}\n  }}\n  involved: search(query: $qInvolved, type: ISSUE, first: $limit) {{\n    nodes {{ ...PrFields }}\n  }}\n  {collab_block}\n}}"
+        );
+
+        let args = to_args(&[
+            "api",
+            "graphql",
+            "-f",
+            &format!("query={query_doc}"),
+            "-f",
+            &format!("qOwned={q_owned}"),
+            "-f",
+            &format!("qReview={q_review}"),
+            "-f",
+            &format!("qInvolved={q_involved}"),
+            "-F",
+            &format!("limit={clamped}"),
+        ]);
+        let res = run_gh_json(&args, cwd).await?;
+        for ptr in [
+            "/data/owned/nodes",
+            "/data/reviewRequested/nodes",
+            "/data/involved/nodes",
+        ] {
+            if let Some(arr) = res.pointer(ptr).and_then(Value::as_array) {
+                raw_nodes.extend(arr.iter().cloned());
+            }
+        }
+        if let Some(repos) = res
+            .pointer("/data/collab/repositories/nodes")
+            .and_then(Value::as_array)
+        {
+            for repo_node in repos {
+                let perm = repo_node
+                    .get("viewerPermission")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if matches!(perm, "ADMIN" | "MAINTAIN" | "WRITE")
+                    && let Some(prs) = repo_node
+                        .pointer("/pullRequests/nodes")
+                        .and_then(Value::as_array)
+                {
+                    raw_nodes.extend(prs.iter().cloned());
+                }
+            }
+        }
+    }
+
+    let mut seen = std::collections::HashSet::<String>::new();
+    let mut normalized: Vec<Value> = Vec::new();
+    for node in &raw_nodes {
+        if let Some(item) = normalize_gql_pr_node(node) {
+            let key = item
+                .get("url")
+                .and_then(Value::as_str)
+                .filter(|u| !u.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}#{}",
+                        item.get("repo").and_then(Value::as_str).unwrap_or(""),
+                        item.get("number").and_then(Value::as_u64).unwrap_or(0)
+                    )
+                });
+            if seen.insert(key) {
+                normalized.push(item);
+            }
+        }
+    }
+
+    normalized.sort_by(|a, b| {
+        let ua = a.get("updatedAt").and_then(Value::as_str).unwrap_or("");
+        let ub = b.get("updatedAt").and_then(Value::as_str).unwrap_or("");
+        ub.cmp(ua)
+    });
+    normalized.truncate(clamped as usize);
+
+    Ok(Value::Array(normalized))
 }
 
 pub fn build_pr_list_args(
@@ -687,15 +1080,63 @@ pub async fn gh_auth_logout(hostname: Option<String>) -> Result<GhStatus, String
     gh_status().await
 }
 
-/// Fetches full PR metadata including `body,comments,reviews,files,commits,statusCheckRollup,mergeable,mergeStateStatus`.
+const REPO_MERGE_FIELDS: &str = "nameWithOwner,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,viewerPermission";
+
+pub fn build_repo_merge_settings_args(repo: Option<String>) -> Result<Vec<String>, String> {
+    let mut args = to_args(&["repo", "view"]);
+    if let Some(r) = repo.filter(|r| !r.is_empty()) {
+        if !is_valid_repo_slug(&r) {
+            return Err(format!("Invalid repository: {}", r));
+        }
+        args.push(r);
+    }
+    args.push("--json".into());
+    args.push(REPO_MERGE_FIELDS.into());
+    Ok(args)
+}
+
+/// Fetches full PR metadata including `body,comments,reviews,files,commits,statusCheckRollup,mergeable,mergeStateStatus`
+/// plus repository merge settings (`mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,deleteBranchOnMerge,viewerPermission`).
 #[tauri::command]
 pub async fn gh_pr_detail(
     selector: String,
     repo: Option<String>,
     cwd: Option<String>,
 ) -> Result<Value, String> {
-    let args = build_pr_detail_args(&selector, repo)?;
-    run_gh_json(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
+    let resolved_cwd = resolve_cwd(cwd.as_deref())?;
+    let pr_args = build_pr_detail_args(&selector, repo.clone())?;
+    let repo_args = build_repo_merge_settings_args(repo.clone())?;
+
+    let (pr_res, repo_res) = tokio::join!(
+        run_gh_json(&pr_args, resolved_cwd.as_deref()),
+        run_gh_json(&repo_args, resolved_cwd.as_deref())
+    );
+
+    let mut detail = pr_res?;
+    if let Some(detail_obj) = detail.as_object_mut() {
+        if let Some(r) = repo.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+            detail_obj
+                .entry("repo".to_string())
+                .or_insert_with(|| Value::String(r.to_string()));
+        }
+        if let Ok(Value::Object(repo_obj)) = repo_res {
+            if let Some(Value::String(slug)) = repo_obj.get("nameWithOwner") {
+                detail_obj.insert("repo".to_string(), Value::String(slug.clone()));
+            }
+            for key in [
+                "mergeCommitAllowed",
+                "squashMergeAllowed",
+                "rebaseMergeAllowed",
+                "deleteBranchOnMerge",
+                "viewerPermission",
+            ] {
+                if let Some(v) = repo_obj.get(key) {
+                    detail_obj.insert(key.to_string(), v.clone());
+                }
+            }
+        }
+    }
+    Ok(detail)
 }
 
 pub fn build_pr_detail_args(selector: &str, repo: Option<String>) -> Result<Vec<String>, String> {
@@ -1213,6 +1654,7 @@ pub fn build_pr_merge_args(
     delete_branch: bool,
     subject: Option<&str>,
     body: Option<&str>,
+    admin: bool,
     repo: Option<String>,
 ) -> Result<Vec<String>, String> {
     let sel = selector.trim();
@@ -1227,6 +1669,9 @@ pub fn build_pr_merge_args(
     if delete_branch {
         args.push("--delete-branch".into());
     }
+    if admin {
+        args.push("--admin".into());
+    }
     if let Some(s) = subject.map(str::trim).filter(|s| !s.is_empty()) {
         args.push("--subject".into());
         args.push(s.to_string());
@@ -1239,14 +1684,16 @@ pub fn build_pr_merge_args(
     Ok(args)
 }
 
-/// Runs `gh pr merge <selector> --<merge|squash|rebase>` (plus `--delete-branch` when selected).
+/// Runs `gh pr merge <selector> --<merge|squash|rebase>` (plus `--delete-branch` and `--admin` when selected).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn gh_pr_merge(
     selector: String,
     method: String,
     delete_branch: Option<bool>,
     subject: Option<String>,
     body: Option<String>,
+    admin: Option<bool>,
     repo: Option<String>,
     cwd: Option<String>,
 ) -> Result<String, String> {
@@ -1256,6 +1703,7 @@ pub async fn gh_pr_merge(
         delete_branch.unwrap_or(false),
         subject.as_deref(),
         body.as_deref(),
+        admin.unwrap_or(false),
         repo,
     )?;
     run_gh(&args, resolve_cwd(cwd.as_deref())?.as_deref()).await
@@ -1521,6 +1969,7 @@ new file mode 100644
             true,
             Some("feat: ship it"),
             Some("Detailed body"),
+            false,
             Some("Steven-Harris/pipan".into()),
         )
         .unwrap();
@@ -1540,6 +1989,89 @@ new file mode 100644
                 "Steven-Harris/pipan"
             ])
         );
-        assert!(build_pr_merge_args("15", "fast-forward", false, None, None, None).is_err());
+
+        let admin_merge = build_pr_merge_args(
+            "15",
+            "squash",
+            false,
+            None,
+            None,
+            true,
+            Some("Steven-Harris/pipan".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            admin_merge,
+            v(&[
+                "pr",
+                "merge",
+                "15",
+                "--squash",
+                "--admin",
+                "--repo",
+                "Steven-Harris/pipan"
+            ])
+        );
+
+        assert!(build_pr_merge_args("15", "fast-forward", false, None, None, false, None).is_err());
+    }
+
+    #[test]
+    fn normalizes_cross_repo_search_and_repo_merge_settings() {
+        assert_eq!(
+            normalize_pr_search_base(Some("open"), Some("is:open")),
+            "is:pr is:open"
+        );
+        assert_eq!(
+            normalize_pr_search_base(Some("all"), Some("is:closed author:@me")),
+            "is:pr is:closed author:@me"
+        );
+        assert!(!has_explicit_search_scope("is:pr is:open"));
+        assert!(has_explicit_search_scope(
+            "is:pr is:open review-requested:@me"
+        ));
+        assert!(has_explicit_search_scope("is:pr is:open user:@me"));
+        assert!(has_explicit_search_scope(
+            "is:pr is:open repo:Steven-Harris/githelm"
+        ));
+
+        let repo_args =
+            build_repo_merge_settings_args(Some("Steven-Harris/githelm".into())).unwrap();
+        assert_eq!(
+            repo_args,
+            v(&[
+                "repo",
+                "view",
+                "Steven-Harris/githelm",
+                "--json",
+                REPO_MERGE_FIELDS
+            ])
+        );
+
+        let sample_node = json!({
+            "number": 233,
+            "title": "Bump @sveltejs/kit from 2.70.2 to 3.0.0",
+            "state": "OPEN",
+            "url": "https://github.com/Steven-Harris/githelm/pull/233",
+            "isDraft": false,
+            "headRefName": "dependabot/npm_and_yarn/sveltejs/kit-3.0.0",
+            "baseRefName": "main",
+            "reviewDecision": "",
+            "updatedAt": "2026-10-29T13:06:18Z",
+            "additions": 347,
+            "deletions": 187,
+            "changedFiles": 2,
+            "repository": { "nameWithOwner": "Steven-Harris/githelm" },
+            "author": { "login": "dependabot" },
+            "labels": { "nodes": [{ "name": "dependencies", "color": "0366d6" }] },
+            "assignees": { "nodes": [] },
+            "reviewRequests": { "nodes": [] },
+            "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "FAILURE" } } }] }
+        });
+        let normalized = normalize_gql_pr_node(&sample_node).unwrap();
+        assert_eq!(normalized["number"], 233);
+        assert_eq!(normalized["repo"], "Steven-Harris/githelm");
+        assert_eq!(normalized["author"]["login"], "dependabot");
+        assert_eq!(normalized["statusCheckRollup"][0]["state"], "FAILURE");
     }
 }

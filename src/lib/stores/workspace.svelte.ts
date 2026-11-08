@@ -4,6 +4,8 @@
 // Persisted to localStorage (user settings). Pipan's SQLite store arrives with
 // persistent sessions; this key is the migration source for it.
 
+import { githubStore } from '#lib/stores/github.svelte.ts';
+
 export type BuiltinPanelId = 'nodes' | 'terminal' | 'files' | 'prs';
 export type PanelId = BuiltinPanelId | (string & {});
 export type SplitOrientation = 'vertical' | 'horizontal';
@@ -22,6 +24,7 @@ interface PersistedWorkspace {
   openPanels: PanelId[];
   activePanel: PanelId | null;
   splitRatio: number;
+  panelOpen?: boolean;
 }
 
 function isPanelId(value: unknown): value is PanelId {
@@ -38,7 +41,8 @@ function load(): PersistedWorkspace {
     orientation: 'vertical',
     openPanels: [],
     activePanel: null,
-    splitRatio: DEFAULT_SPLIT_RATIO
+    splitRatio: DEFAULT_SPLIT_RATIO,
+    panelOpen: false
   };
   try {
     const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
@@ -51,11 +55,16 @@ function load(): PersistedWorkspace {
       isPanelId(parsed.activePanel) && openPanels.includes(parsed.activePanel)
         ? parsed.activePanel
         : (openPanels[0] ?? null);
+    const panelOpen =
+      typeof parsed.panelOpen === 'boolean'
+        ? parsed.panelOpen
+        : openPanels.length > 0;
     return {
       orientation: parsed.orientation === 'horizontal' ? 'horizontal' : 'vertical',
       openPanels,
       activePanel,
-      splitRatio: clampRatio(parsed.splitRatio ?? DEFAULT_SPLIT_RATIO)
+      splitRatio: clampRatio(parsed.splitRatio ?? DEFAULT_SPLIT_RATIO),
+      panelOpen
     };
   } catch {
     return fallback;
@@ -68,6 +77,7 @@ class WorkspaceStore {
   activePanel = $state<PanelId | null>(null);
   splitRatio = $state<number>(DEFAULT_SPLIT_RATIO);
   currentView = $state<MainView>('chat');
+  panelOpen = $state<boolean>(false);
 
   private loaded = false;
 
@@ -80,17 +90,37 @@ class WorkspaceStore {
     this.openPanels = saved.openPanels;
     this.activePanel = saved.activePanel;
     this.splitRatio = saved.splitRatio;
+    this.panelOpen = saved.panelOpen ?? saved.openPanels.length > 0;
+  }
+
+  get isPanelOpen(): boolean {
+    return this.panelOpen;
   }
 
   get hasPanels(): boolean {
-    return this.openPanels.length > 0;
+    return this.panelOpen;
+  }
+
+  togglePanelArea(): void {
+    this.panelOpen = !this.panelOpen;
+    this.persist();
+  }
+
+  openPanelArea(): void {
+    this.panelOpen = true;
+    this.persist();
+  }
+
+  closePanelArea(): void {
+    this.panelOpen = false;
+    this.persist();
   }
 
   isOpen(id: PanelId): boolean {
     return this.openPanels.includes(id);
   }
 
-  /** Header toolbar behaviour: closed -> open and focus; open -> close. */
+  /** Header/slash command behaviour: closed -> open and focus; open -> close. */
   togglePanel(id: PanelId): void {
     if (this.isOpen(id)) {
       this.closePanel(id);
@@ -104,6 +134,7 @@ class WorkspaceStore {
       this.openPanels = [...this.openPanels, id];
     }
     this.activePanel = id;
+    this.panelOpen = true;
     this.persist();
   }
 
@@ -116,6 +147,7 @@ class WorkspaceStore {
       // Prefer the neighbouring tab that slides into the closed tab's slot.
       this.activePanel = next[Math.min(idx, next.length - 1)] ?? null;
     }
+    // Note: panel remains open even when empty so user can select + to load a panel
     this.persist();
   }
 
@@ -145,6 +177,7 @@ class WorkspaceStore {
   }
 
   openCostView(): void {
+    void githubStore.selectPr(null);
     this.currentView = 'cost';
   }
 
@@ -153,18 +186,24 @@ class WorkspaceStore {
   }
 
   toggleCostView(): void {
+    void githubStore.selectPr(null);
     this.currentView = this.currentView === 'cost' ? 'chat' : 'cost';
   }
 
   openExtensionsView(): void {
+    void githubStore.selectPr(null);
     this.currentView = 'extensions';
   }
 
   toggleExtensionsView(): void {
+    void githubStore.selectPr(null);
     this.currentView = this.currentView === 'extensions' ? 'chat' : 'extensions';
   }
 
   openMainView(viewId: MainView): void {
+    if (viewId !== 'chat') {
+      void githubStore.selectPr(null);
+    }
     this.currentView = viewId;
   }
 
@@ -175,7 +214,8 @@ class WorkspaceStore {
         orientation: this.orientation,
         openPanels: $state.snapshot(this.openPanels),
         activePanel: this.activePanel,
-        splitRatio: this.splitRatio
+        splitRatio: this.splitRatio,
+        panelOpen: this.panelOpen
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
