@@ -1686,6 +1686,7 @@ pub fn build_pr_merge_args(
 
 /// Runs `gh pr merge <selector> --<merge|squash|rebase>` (plus `--delete-branch` and `--admin` when selected).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn gh_pr_merge(
     selector: String,
     method: String,
