@@ -31,6 +31,7 @@
   import { doctorStore } from '#lib/stores/doctor.svelte.ts';
   import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import ExtensionContributionHost from './ExtensionContributionHost.svelte';
+  import PullRequestsPanel from './PullRequestsPanel.svelte';
   import type {
     SavedSession,
     SessionFilter,
@@ -697,55 +698,8 @@
         {/if}
       </div>
     {:else if activeTab === 'prs'}
-      <!-- Pull Requests & Webhook Tunnel Status -->
-      <div class="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-        <div class="rounded-xl border border-zinc-800 bg-zinc-900/80 p-3 space-y-2">
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-1.5 font-semibold text-zinc-100">
-              <GitBranch class="h-3.5 w-3.5 text-sky-400" />
-              <span>Workspace Repository</span>
-            </div>
-            <span class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-200">
-              {chatStore.sessionStatus.mode === 'directory' && chatStore.sessionStatus.cwd
-                ? 'Bound'
-                : 'Sandbox'}
-            </span>
-          </div>
-
-          <p class="text-[11px] leading-relaxed text-zinc-300 break-words font-mono">
-            {chatStore.sessionStatus.mode === 'directory' && chatStore.sessionStatus.cwd
-              ? chatStore.sessionStatus.cwd
-              : 'Headless temp directory active. Open a Git repository folder to inspect pull requests.'}
-          </p>
-        </div>
-
-        <div class="rounded-xl border border-zinc-800 bg-zinc-900/80 p-3 space-y-2">
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-1.5 font-semibold text-zinc-100">
-              <Radio class="h-3.5 w-3.5 text-amber-400" />
-              <span>Webhook Tunnel</span>
-            </div>
-            <span class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
-              Standby
-            </span>
-          </div>
-
-          <p class="text-[11px] leading-relaxed text-zinc-300">
-            Pull request reviews, issue comments, and CI status checks stream via <code class="rounded bg-zinc-800 px-1 py-0.5 font-mono text-zinc-200">gh webhook forward</code> without REST polling.
-          </p>
-
-          {#if chatStore.sessionStatus.mode !== 'directory'}
-            <button
-              type="button"
-              onclick={handleSelectFolder}
-              class="mt-1 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-100 transition hover:bg-zinc-700 cursor-pointer"
-            >
-              <FolderOpen class="h-3.5 w-3.5 text-sky-400" />
-              <span>Open Repository Folder…</span>
-            </button>
-          {/if}
-        </div>
-      </div>
+      <!-- Pull Requests Sidebar View: Search views, repos & list -->
+      <PullRequestsPanel />
     {:else}
       {@const customTab = extensionRegistry.contributedSidebarTabs.find((t) => t.id === activeTab)}
       {#if customTab}

@@ -44,6 +44,7 @@ export interface ForwarderInfo {
 	/** Loopback port of the local webhook receiver. */
 	port: number;
 	pid: number | null;
+	wsUrl?: string;
 	error?: string;
 }
 
@@ -153,6 +154,7 @@ export interface GhPullRequest {
 	title: string;
 	state: 'OPEN' | 'CLOSED' | 'MERGED';
 	url: string;
+	repo?: string | null;
 	headRefName: string;
 	baseRefName: string;
 	headRefOid?: string;
@@ -180,6 +182,11 @@ export interface GhPullRequestDetail extends GhPullRequest {
 	reviews?: GhPrReview[];
 	files?: GhPrFileSummary[];
 	commits?: GhPrCommit[];
+	mergeCommitAllowed?: boolean;
+	squashMergeAllowed?: boolean;
+	rebaseMergeAllowed?: boolean;
+	deleteBranchOnMerge?: boolean;
+	viewerPermission?: string;
 }
 
 export interface GhPrReviewComment {

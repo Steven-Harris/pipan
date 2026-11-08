@@ -4,6 +4,7 @@
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { flowStore } from '#lib/stores/flow.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
+  import { githubStore } from '#lib/stores/github.svelte.ts';
   import { doctorStore } from '#lib/stores/doctor.svelte.ts';
   import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import SessionHeader from '#lib/components/SessionHeader.svelte';
@@ -13,6 +14,7 @@
   import CostAnalyticsPage from '#lib/components/CostAnalyticsPage.svelte';
   import ExtensionsManagerPage from '#lib/components/ExtensionsManagerPage.svelte';
   import ExtensionContributionHost from '#lib/components/ExtensionContributionHost.svelte';
+  import PrDetailDrawer from '#lib/components/PrDetailDrawer.svelte';
   import DoctorModal from '#lib/components/DoctorModal.svelte';
   import SettingsAuthModal from '#lib/components/SettingsAuthModal.svelte';
 
@@ -51,7 +53,9 @@
     <Sidebar />
 
     <main class="flex flex-1 min-w-0 flex-col overflow-hidden">
-      {#if workspaceStore.currentView === 'extensions'}
+      {#if githubStore.selectedPrNumber !== null}
+        <PrDetailDrawer />
+      {:else if workspaceStore.currentView === 'extensions'}
         <ExtensionsManagerPage />
       {:else if workspaceStore.currentView === 'cost' && extensionRegistry.isMainViewEnabled('cost')}
         <CostAnalyticsPage />
