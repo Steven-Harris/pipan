@@ -13,6 +13,8 @@ pub mod skills;
 pub mod storage;
 pub mod terminal;
 pub mod usage;
+#[cfg(test)]
+mod verification;
 pub mod webhook;
 pub mod worktree;
 
