@@ -277,6 +277,22 @@ class TerminalStore {
     this.initialized = false;
   }
 
+  getView(sessionId: string): TerminalSessionView {
+    const sid = sessionId.trim() || 'default';
+    return (
+      this.sessions[sid] ?? {
+        sessionId: sid,
+        info: null,
+        items: [],
+        history: [],
+        sendToPiBash: false,
+        isStarting: false,
+        isRunningPiBash: false,
+        error: null
+      }
+    );
+  }
+
   getOrCreateView(sessionId: string): TerminalSessionView {
     const sid = sessionId.trim() || 'default';
     if (!this.sessions[sid]) {

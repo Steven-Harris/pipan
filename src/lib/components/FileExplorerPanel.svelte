@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
     FolderTree,
@@ -30,7 +31,10 @@
 
   // Sync the file explorer whenever the active session's cwd changes
   $effect(() => {
-    void fileExplorerStore.syncWorkspace(activeCwd);
+    const cwd = activeCwd;
+    untrack(() => {
+      void fileExplorerStore.syncWorkspace(cwd);
+    });
   });
 
   const codeLines = $derived.by(() => {

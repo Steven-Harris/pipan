@@ -9,6 +9,7 @@
   },
   "packageManager": "pnpm@10.5.2",
   "scripts": {
+    "run": "pnpm tauri dev",
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",

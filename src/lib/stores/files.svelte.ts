@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { untrack } from 'svelte';
 import { chatStore } from '#lib/stores/chat.svelte.ts';
 import type {
   GitFileStatusCode,
@@ -33,6 +34,7 @@ class FileExplorerStore {
 
   recentlyAttachedPath = $state<string | null>(null);
   private attachTimer: ReturnType<typeof setTimeout> | null = null;
+  private initializedOnce = false;
 
   /** Flattened visible tree rows in depth-first order, respecting expansion & filterQuery. */
   readonly visibleTreeNodes = $derived.by((): FlattenedTreeNode[] => {
@@ -126,21 +128,26 @@ class FileExplorerStore {
 
   async syncWorkspace(targetCwd: string | null): Promise<void> {
     const cleaned = targetCwd?.trim() || null;
-    if (cleaned === this.cwd && this.entriesByDir[''] !== undefined) {
-      return;
-    }
-    this.cwd = cleaned;
-    this.entriesByDir = {};
-    this.expandedDirs = {};
-    this.loadingDirs = {};
-    this.gitStatuses = {};
-    this.selectedRelativePath = null;
-    this.preview = null;
-    this.error = null;
+    await untrack(async () => {
+      if (this.initializedOnce && cleaned === this.cwd) {
+        if (!cleaned || this.loadingRoot || this.entriesByDir[''] !== undefined) {
+          return;
+        }
+      }
+      this.initializedOnce = true;
+      this.cwd = cleaned;
+      this.entriesByDir = {};
+      this.expandedDirs = {};
+      this.loadingDirs = {};
+      this.gitStatuses = {};
+      this.selectedRelativePath = null;
+      this.preview = null;
+      this.error = null;
 
-    if (cleaned) {
-      await this.refresh();
-    }
+      if (cleaned) {
+        await this.refresh();
+      }
+    });
   }
 
   async refresh(): Promise<void> {
