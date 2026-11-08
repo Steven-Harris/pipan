@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -727,7 +727,7 @@ pub(crate) fn build_pi_command_with_args(working_dir: &Path, extra_args: &[OsStr
     }
 }
 
-fn find_executable_in_path(binary_name: &str, path_var: &OsString) -> Option<PathBuf> {
+pub(crate) fn find_executable_in_path(binary_name: &str, path_var: &OsString) -> Option<PathBuf> {
     for dir in std::env::split_paths(path_var) {
         if dir.as_os_str().is_empty() {
             continue;
@@ -758,9 +758,23 @@ fn is_executable_file(path: &Path) -> bool {
     }
 }
 
+static AUGMENTED_PATH: RwLock<Option<OsString>> = RwLock::new(None);
+
 pub(crate) fn get_augmented_path() -> OsString {
-    static AUGMENTED_PATH: OnceLock<OsString> = OnceLock::new();
-    AUGMENTED_PATH.get_or_init(compute_augmented_path).clone()
+    if let Ok(guard) = AUGMENTED_PATH.read()
+        && let Some(cached) = guard.as_ref()
+    {
+        return cached.clone();
+    }
+    refresh_augmented_path()
+}
+
+pub(crate) fn refresh_augmented_path() -> OsString {
+    let computed = compute_augmented_path();
+    if let Ok(mut guard) = AUGMENTED_PATH.write() {
+        *guard = Some(computed.clone());
+    }
+    computed
 }
 
 fn compute_augmented_path() -> OsString {

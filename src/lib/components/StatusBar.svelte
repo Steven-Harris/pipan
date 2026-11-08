@@ -11,12 +11,14 @@
     Blocks,
     HeartPulse,
     Bot,
-    GitPullRequest
+    GitPullRequest,
+    KeyRound
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { usageStore } from '#lib/stores/usage.svelte.ts';
   import { githubStore } from '#lib/stores/github.svelte.ts';
+  import { doctorStore } from '#lib/stores/doctor.svelte.ts';
   import ModelSelector from './ModelSelector.svelte';
 
   onMount(() => {
@@ -165,10 +167,17 @@
 
     <!-- GitHub & Webhook Tunnel Status -->
     <div class="inline-flex items-center gap-2 hover:text-zinc-200">
-      <div class="inline-flex items-center gap-1" title={ghAccount ? `GitHub account: @${ghAccount}` : 'GitHub CLI not authenticated'}>
+      <button
+        type="button"
+        onclick={() => doctorStore.openSettingsModal('github')}
+        class="inline-flex items-center gap-1 rounded px-1 py-0.5 transition hover:bg-zinc-800/80 cursor-pointer"
+        title={ghAccount
+          ? `GitHub account: @${ghAccount} (Click to manage GitHub auth & webhook settings)`
+          : 'GitHub CLI not authenticated (Click to sign in)'}
+      >
         <GitPullRequest class="h-3 w-3 {ghAccount ? 'text-sky-400' : 'text-zinc-600'}" />
         <span class="font-mono truncate max-w-[100px]">{ghAccount ? `@${ghAccount}` : 'Signed out'}</span>
-      </div>
+      </button>
 
       <div
         class="inline-flex items-center gap-1 font-mono text-[10px]"
@@ -246,13 +255,40 @@
 
     <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
 
-    <!-- Doctor Health Status Indicator -->
-    <div
-      class="inline-flex items-center gap-1 hover:text-zinc-200"
-      title="Pipan Doctor: System dependencies healthy"
+    <!-- Login & Configuration Modal Trigger -->
+    <button
+      type="button"
+      onclick={() => doctorStore.openSettingsModal('pi-auth')}
+      class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-zinc-800/80 hover:text-zinc-100 cursor-pointer"
+      title="Open Pi & GitHub Login and Configuration"
     >
-      <HeartPulse class="h-3 w-3 text-emerald-400" />
-      <span class="text-emerald-400 font-medium">Doctor: OK</span>
-    </div>
+      <KeyRound class="h-3 w-3 text-indigo-400" />
+      <span>Login & Config</span>
+    </button>
+
+    <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
+
+    <!-- Doctor Health Status Indicator -->
+    <button
+      type="button"
+      onclick={() => doctorStore.openDoctorModal()}
+      class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-zinc-800/80 cursor-pointer"
+      title="Click to open Pipan Dependency Doctor & Auto-Fixer"
+    >
+      {#if doctorStore.report?.overallStatus === 'fail'}
+        <HeartPulse class="h-3 w-3 text-rose-400" />
+        <span class="text-rose-400 font-medium">
+          Doctor: {doctorStore.report.failCount} failed
+        </span>
+      {:else if doctorStore.report?.overallStatus === 'warn'}
+        <HeartPulse class="h-3 w-3 text-amber-400" />
+        <span class="text-amber-400 font-medium">
+          Doctor: {doctorStore.report.warnCount} warn
+        </span>
+      {:else}
+        <HeartPulse class="h-3 w-3 text-emerald-400" />
+        <span class="text-emerald-400 font-medium">Doctor: OK</span>
+      {/if}
+    </button>
   </div>
 </footer>

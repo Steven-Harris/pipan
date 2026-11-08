@@ -1,6 +1,8 @@
 pub mod agent;
 pub mod approval;
+pub mod auth;
 pub mod db;
+pub mod doctor;
 pub mod files;
 pub mod fs_explorer;
 pub mod github;
@@ -17,11 +19,15 @@ use agent::{
     AgentManager, list_agent_sessions, list_pending_approvals, resolve_approval,
     send_agent_command, spawn_agent_session, stop_agent_session,
 };
-
+use auth::{
+    delete_custom_model_endpoint, get_github_auth_details, get_pi_auth_and_settings,
+    remove_pi_provider_auth, save_custom_model_endpoint, save_pi_provider_auth, save_pi_settings,
+};
 use db::{
     Database, clear_node_positions, delete_github_view, get_graph_direction, list_github_views,
     load_node_positions, save_github_view, save_node_positions, set_graph_direction,
 };
+use doctor::{fix_doctor_issue, run_doctor};
 use files::read_file_attachment;
 use fs_explorer::{get_git_file_statuses, list_workspace_files, read_workspace_file};
 use github::{
@@ -133,7 +139,16 @@ pub fn run() {
             read_workspace_file,
             get_usage_analytics,
             rescan_usage_files,
-            record_usage_entry
+            record_usage_entry,
+            get_pi_auth_and_settings,
+            save_pi_provider_auth,
+            remove_pi_provider_auth,
+            save_pi_settings,
+            save_custom_model_endpoint,
+            delete_custom_model_endpoint,
+            get_github_auth_details,
+            run_doctor,
+            fix_doctor_issue
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
