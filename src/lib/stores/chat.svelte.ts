@@ -145,6 +145,53 @@ class ChatStore {
     return null;
   });
 
+  readonly contextUsage = $derived.by((): {
+    currentTokens: number;
+    contextWindow: number;
+    percent: number;
+  } => {
+    let currentTokens = 0;
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const msg = this.messages[i];
+      if (msg.usage) {
+        const toks =
+          typeof msg.usage.totalTokens === 'number'
+            ? msg.usage.totalTokens
+            : (msg.usage.input ?? 0) +
+              (msg.usage.output ?? 0) +
+              (msg.usage.cacheRead ?? 0) +
+              (msg.usage.cacheWrite ?? 0);
+        if (toks > 0) {
+          currentTokens = toks;
+          break;
+        }
+      }
+    }
+    if (currentTokens === 0) {
+      const { totalTokens } = this.computeSessionTelemetry();
+      currentTokens = totalTokens;
+    }
+
+    const fullModel = this.availableModels.find(
+      (m) =>
+        m.id.toLowerCase() === (this.modelInfo?.id ?? '').toLowerCase() &&
+        (!this.modelInfo?.provider ||
+          m.provider.toLowerCase() === this.modelInfo.provider.toLowerCase())
+    );
+    const contextWindow = fullModel?.contextWindow ?? 200_000;
+    const percent = Math.min(100, Math.round((currentTokens / Math.max(contextWindow, 1)) * 100));
+
+    return {
+      currentTokens,
+      contextWindow,
+      percent
+    };
+  });
+
+  readonly activeSessionCost = $derived.by((): number => {
+    return this.computeSessionTelemetry().totalCostUsd;
+  });
+
   readonly availableSkills = $derived.by((): PiSkillItem[] => {
     const map = new Map<string, PiSkillItem>();
     for (const s of this.installedSkills) {
@@ -1348,6 +1395,23 @@ class ChatStore {
     }
     if (rawMsg.usage) {
       last.usage = rawMsg.usage;
+      if (this.activeSessionId) {
+        void invoke('record_usage_entry', {
+          entry: {
+            sessionId: this.activeSessionId,
+            messageId: rawMsg.id ?? last.id,
+            timestamp: rawMsg.timestamp ?? Date.now(),
+            provider: this.modelInfo?.provider ?? 'unknown',
+            model: this.modelInfo?.id ?? 'unknown',
+            input: rawMsg.usage.input ?? 0,
+            output: rawMsg.usage.output ?? 0,
+            cacheRead: rawMsg.usage.cacheRead ?? 0,
+            cacheWrite: rawMsg.usage.cacheWrite ?? 0,
+            costUsd: rawMsg.usage.cost?.total ?? 0.0,
+            cwd: this.sessionStatus.cwd
+          }
+        });
+      }
     }
 
     // If no blocks were populated via deltas, hydrate from rawMsg.content
