@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import {
     SquareTerminal,
     FolderOpen,
@@ -23,7 +23,7 @@
 
   const activeSessionId = $derived(chatStore.activeSessionId ?? 'default');
   const activeCwd = $derived(chatStore.effectiveWorkspaceCwd);
-  const sessionView = $derived(terminalStore.getOrCreateView(activeSessionId));
+  const sessionView = $derived(terminalStore.getView(activeSessionId));
 
   const displayCwd = $derived.by(() => {
     const raw = sessionView.info?.cwd ?? activeCwd;
@@ -35,7 +35,9 @@
   $effect(() => {
     const sid = activeSessionId;
     const cwd = activeCwd;
-    void terminalStore.ensureSession(sid, cwd);
+    untrack(() => {
+      void terminalStore.ensureSession(sid, cwd);
+    });
   });
 
   // Auto-scroll terminal viewport when new output items arrive
