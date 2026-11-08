@@ -4,16 +4,20 @@
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { flowStore } from '#lib/stores/flow.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
+  import { doctorStore } from '#lib/stores/doctor.svelte.ts';
   import SessionHeader from '#lib/components/SessionHeader.svelte';
   import Sidebar from '#lib/components/Sidebar.svelte';
   import WorkspaceLayout from '#lib/components/WorkspaceLayout.svelte';
   import StatusBar from '#lib/components/StatusBar.svelte';
   import CostAnalyticsPage from '#lib/components/CostAnalyticsPage.svelte';
+  import DoctorModal from '#lib/components/DoctorModal.svelte';
+  import SettingsAuthModal from '#lib/components/SettingsAuthModal.svelte';
 
   onMount(() => {
     workspaceStore.init();
     chatStore.init();
     flowStore.init();
+    void doctorStore.init();
   });
 </script>
 
@@ -52,4 +56,6 @@
   </div>
 
   <StatusBar />
+  <DoctorModal />
+  <SettingsAuthModal />
 </div>

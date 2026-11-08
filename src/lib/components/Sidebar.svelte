@@ -21,10 +21,13 @@
     Tag,
     Check,
     X,
-    Coins
+    Coins,
+    HeartPulse,
+    KeyRound
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
+  import { doctorStore } from '#lib/stores/doctor.svelte.ts';
   import type {
     SavedSession,
     SessionFilter,
@@ -707,5 +710,34 @@
         </div>
       </div>
     {/if}
+
+    <!-- Bottom Actions: Login & Configuration + Dependency Doctor -->
+    <div class="grid grid-cols-2 gap-1.5 border-t border-zinc-800/80 bg-zinc-950/60 p-2">
+      <button
+        type="button"
+        onclick={() => doctorStore.openSettingsModal('pi-auth')}
+        class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/90 px-2.5 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+        title="Open Pi & GitHub Login and Configuration"
+      >
+        <KeyRound class="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+        <span class="truncate">Login & Config</span>
+      </button>
+
+      <button
+        type="button"
+        onclick={() => doctorStore.openDoctorModal()}
+        class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/90 px-2.5 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+        title="Open System Dependency Doctor & Auto-Fixer"
+      >
+        <HeartPulse
+          class="h-3.5 w-3.5 shrink-0 {doctorStore.report?.overallStatus === 'fail'
+            ? 'text-rose-400'
+            : doctorStore.report?.overallStatus === 'warn'
+              ? 'text-amber-400'
+              : 'text-emerald-400'}"
+        />
+        <span class="truncate">Doctor</span>
+      </button>
+    </div>
   </aside>
 {/if}
