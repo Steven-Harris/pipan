@@ -4,11 +4,12 @@
 // Persisted to localStorage (user settings). Pipan's SQLite store arrives with
 // persistent sessions; this key is the migration source for it.
 
-export type PanelId = 'nodes' | 'terminal' | 'files' | 'prs';
+export type BuiltinPanelId = 'nodes' | 'terminal' | 'files' | 'prs';
+export type PanelId = BuiltinPanelId | (string & {});
 export type SplitOrientation = 'vertical' | 'horizontal';
-export type MainView = 'chat' | 'cost';
+export type MainView = 'chat' | 'cost' | 'extensions' | (string & {});
 
-export const PANEL_IDS: readonly PanelId[] = ['nodes', 'terminal', 'files', 'prs'];
+export const PANEL_IDS: readonly BuiltinPanelId[] = ['nodes', 'terminal', 'files', 'prs'];
 
 export const MIN_SPLIT_RATIO = 0.2;
 export const MAX_SPLIT_RATIO = 0.8;
@@ -24,7 +25,7 @@ interface PersistedWorkspace {
 }
 
 function isPanelId(value: unknown): value is PanelId {
-  return typeof value === 'string' && (PANEL_IDS as readonly string[]).includes(value);
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 export function clampRatio(ratio: number): number {
@@ -153,6 +154,18 @@ class WorkspaceStore {
 
   toggleCostView(): void {
     this.currentView = this.currentView === 'cost' ? 'chat' : 'cost';
+  }
+
+  openExtensionsView(): void {
+    this.currentView = 'extensions';
+  }
+
+  toggleExtensionsView(): void {
+    this.currentView = this.currentView === 'extensions' ? 'chat' : 'extensions';
+  }
+
+  openMainView(viewId: MainView): void {
+    this.currentView = viewId;
   }
 
   private persist(): void {

@@ -2,12 +2,14 @@
   import { X } from 'lucide-svelte';
   import { SvelteFlowProvider } from '@xyflow/svelte';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
-  import { PANEL_BY_ID } from '#lib/workspace/panels.ts';
+  import { getPanelDefinition } from '#lib/workspace/panels.ts';
+  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import FlowCanvas from './FlowCanvas.svelte';
   import FileExplorerPanel from './FileExplorerPanel.svelte';
   import PanelPlaceholder from './PanelPlaceholder.svelte';
   import PullRequestsPanel from './PullRequestsPanel.svelte';
   import TerminalPanel from './TerminalPanel.svelte';
+  import ExtensionContributionHost from './ExtensionContributionHost.svelte';
 
   function onTabKeydown(e: KeyboardEvent) {
     const ids = workspaceStore.openPanels;
@@ -33,7 +35,7 @@
     class="flex shrink-0 items-end gap-0.5 overflow-x-auto border-b border-zinc-800/80 bg-zinc-900/80 px-2 pt-1.5 select-none"
   >
     {#each workspaceStore.openPanels as id (id)}
-      {@const def = PANEL_BY_ID[id]}
+      {@const def = getPanelDefinition(id)}
       {@const Icon = def.icon}
       {@const active = workspaceStore.activePanel === id}
       <div
@@ -75,16 +77,25 @@
       aria-labelledby="panel-tab-{id}"
       class="relative flex min-h-0 flex-1 flex-col"
     >
-      {#if id === 'nodes'}
+      {#if id === 'nodes' && extensionRegistry.isPanelEnabled('nodes')}
         <SvelteFlowProvider>
           <FlowCanvas />
         </SvelteFlowProvider>
-      {:else if id === 'terminal'}
+      {:else if id === 'terminal' && extensionRegistry.isPanelEnabled('terminal')}
         <TerminalPanel />
-      {:else if id === 'files'}
+      {:else if id === 'files' && extensionRegistry.isPanelEnabled('files')}
         <FileExplorerPanel />
-      {:else if id === 'prs'}
+      {:else if id === 'prs' && extensionRegistry.isPanelEnabled('prs')}
         <PullRequestsPanel />
+      {:else if extensionRegistry.contributedPanelsById[id]}
+        {@const contributed = extensionRegistry.contributedPanelsById[id]}
+        <ExtensionContributionHost
+          extensionId={contributed.extensionId}
+          contributionId={contributed.id}
+          title={contributed.label}
+          description={contributed.description}
+          kind="panel"
+        />
       {:else}
         <PanelPlaceholder {id} />
       {/if}

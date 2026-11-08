@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
 import type {
   ChatMessage,
   ContentBlock,
@@ -208,6 +209,12 @@ class ChatStore {
         });
       } else {
         map.set(key, c);
+      }
+    }
+    for (const extCmd of extensionRegistry.slashCommandsAsSkillItems) {
+      const key = `${extCmd.source}:${extCmd.name.toLowerCase()}`;
+      if (!map.has(key)) {
+        map.set(key, extCmd);
       }
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
