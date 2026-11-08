@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.2.0-alpha.1](https://github.com/Steven-Harris/pipan/releases/tag/v0.2.0-alpha.1) - 2026-11-08
+
+### What's Changed
+* docs: split PLAN.md into per-phase files under plan/ by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/22
+* docs: use SQLite for storage and support left-to-right node graph in plan by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/23
+* feat(workspace): chat-first layout with split panel system by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/24
+* feat(flow): persist graph layout in SQLite and improve node layout by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/25
+* feat(sessions): persistent sessions lifecycle, search, group, filter, sort, rename, archive, delete, and stop by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/26
+* feat(chat): model selector, skills picker, and drag-and-drop file attachments by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/27
+* feat(github): deep GitHub CLI integration and PR review/merge panel by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/28
+* feat(workspace): session terminal and file explorer panels by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/29
+* feat(analytics): cost & usage analytics page and bottom status bar by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/30
+* feat(doctor): in-app Pi/GitHub login configuration and dependency doctor by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/31
+* feat(extensions): VS Code-style extension and contribution point system by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/32
+* test(verification): complete v0.2 verification suite and cross-phase integration tests by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/33
+* fix(workspace): prevent reactive loops and unsafe mutations in terminal and file explorer by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/34
+* feat(github): cross-repo PR search, interactive diff file tree, and optimistic webhook CI by @Steven-Harris in https://github.com/Steven-Harris/pipan/pull/35
+
+
+**Full Changelog**: https://github.com/Steven-Harris/pipan/compare/v0.1.0...v0.2.0-alpha.1
+
 ## [v0.1.0](https://github.com/Steven-Harris/pipan/releases/tag/v0.1.0) - 2026-11-06
 
 ### What's Changed
