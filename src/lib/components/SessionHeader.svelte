@@ -17,7 +17,7 @@
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
-  import { PANELS } from '#lib/workspace/panels.ts';
+  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import ModelSelector from './ModelSelector.svelte';
 
   let isPickingFolder = $state(false);
@@ -257,12 +257,17 @@
   <!-- Right: Panel Toggles + Session Actions -->
   <div class="flex shrink-0 items-center gap-2">
     <div class="flex items-center gap-1" role="toolbar" aria-label="Session panels">
-      {#each PANELS as def (def.id)}
-        {@const Icon = def.icon}
+      {#each extensionRegistry.contributedPanels as def (def.id)}
+        {@const Icon = def.iconComponent}
         {@const isOpen = workspaceStore.isOpen(def.id)}
         <button
           type="button"
-          onclick={() => workspaceStore.togglePanel(def.id)}
+          onclick={() => {
+            if (workspaceStore.currentView !== 'chat') {
+              workspaceStore.openChatView();
+            }
+            workspaceStore.togglePanel(def.id);
+          }}
           aria-pressed={isOpen}
           class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition cursor-pointer {isOpen
             ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-100'

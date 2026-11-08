@@ -12,13 +12,15 @@
     HeartPulse,
     Bot,
     GitPullRequest,
-    KeyRound
+    KeyRound,
+    Puzzle
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { usageStore } from '#lib/stores/usage.svelte.ts';
   import { githubStore } from '#lib/stores/github.svelte.ts';
   import { doctorStore } from '#lib/stores/doctor.svelte.ts';
+  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import ModelSelector from './ModelSelector.svelte';
 
   onMount(() => {
@@ -163,36 +165,78 @@
       <span class="font-mono">{activeSubagentsCount} {activeSubagentsCount === 1 ? 'subagent' : 'subagents'}</span>
     </div>
 
-    <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
+    <!-- GitHub & Webhook Tunnel Status (contributed by pipan.github-prs) -->
+    {#if extensionRegistry.isStatusBarItemEnabled('github-webhook')}
+      <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
 
-    <!-- GitHub & Webhook Tunnel Status -->
-    <div class="inline-flex items-center gap-2 hover:text-zinc-200">
+      <div class="inline-flex items-center gap-2 hover:text-zinc-200">
+        <button
+          type="button"
+          onclick={() => doctorStore.openSettingsModal('github')}
+          class="inline-flex items-center gap-1 rounded px-1 py-0.5 transition hover:bg-zinc-800/80 cursor-pointer"
+          title={ghAccount
+            ? `GitHub account: @${ghAccount} (Click to manage GitHub auth & webhook settings)`
+            : 'GitHub CLI not authenticated (Click to sign in)'}
+        >
+          <GitPullRequest class="h-3 w-3 {ghAccount ? 'text-sky-400' : 'text-zinc-600'}" />
+          <span class="font-mono truncate max-w-[100px]">{ghAccount ? `@${ghAccount}` : 'Signed out'}</span>
+        </button>
+
+        <div
+          class="inline-flex items-center gap-1 font-mono text-[10px]"
+          title={webhookActive ? 'gh webhook forward tunnel is live' : 'Webhook tunnel is standby'}
+        >
+          <Radio class="h-2.5 w-2.5 {webhookActive ? 'text-emerald-400 animate-pulse' : 'text-zinc-500'}" />
+          <span class={webhookActive ? 'text-emerald-300' : 'text-zinc-500'}>
+            {webhookActive ? 'Live' : 'Standby'}
+          </span>
+        </div>
+      </div>
+    {/if}
+
+    {#each extensionRegistry.contributedStatusBarItems.filter((i) => !i.builtin && i.alignment === 'left') as item (`${item.extensionId}:${item.id}`)}
+      {@const runtimeState = extensionRegistry.getRuntimeStatusBarItemState(item.extensionId, item.id)}
+      <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
       <button
         type="button"
-        onclick={() => doctorStore.openSettingsModal('github')}
-        class="inline-flex items-center gap-1 rounded px-1 py-0.5 transition hover:bg-zinc-800/80 cursor-pointer"
-        title={ghAccount
-          ? `GitHub account: @${ghAccount} (Click to manage GitHub auth & webhook settings)`
-          : 'GitHub CLI not authenticated (Click to sign in)'}
+        onclick={() => {
+          if (runtimeState?.onClick) {
+            runtimeState.onClick();
+          } else {
+            workspaceStore.openExtensionsView();
+          }
+        }}
+        class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono transition hover:bg-zinc-800/80 hover:text-zinc-200 cursor-pointer"
+        title={runtimeState?.tooltip ?? `${item.extensionName}: ${item.id}`}
       >
-        <GitPullRequest class="h-3 w-3 {ghAccount ? 'text-sky-400' : 'text-zinc-600'}" />
-        <span class="font-mono truncate max-w-[100px]">{ghAccount ? `@${ghAccount}` : 'Signed out'}</span>
+        <Puzzle class="h-3 w-3 text-indigo-400" />
+        <span>{runtimeState?.text ?? item.id}</span>
       </button>
-
-      <div
-        class="inline-flex items-center gap-1 font-mono text-[10px]"
-        title={webhookActive ? 'gh webhook forward tunnel is live' : 'Webhook tunnel is standby'}
-      >
-        <Radio class="h-2.5 w-2.5 {webhookActive ? 'text-emerald-400 animate-pulse' : 'text-zinc-500'}" />
-        <span class={webhookActive ? 'text-emerald-300' : 'text-zinc-500'}>
-          {webhookActive ? 'Live' : 'Standby'}
-        </span>
-      </div>
-    </div>
+    {/each}
   </div>
 
   <!-- Right Segment: Token Context Window %, Cost (clickable), Sessions Count, Model Selector, Extensions, Doctor -->
   <div class="flex items-center gap-3 shrink-0 pl-3">
+    {#each extensionRegistry.contributedStatusBarItems.filter((i) => !i.builtin && i.alignment === 'right') as item (`${item.extensionId}:${item.id}`)}
+      {@const runtimeState = extensionRegistry.getRuntimeStatusBarItemState(item.extensionId, item.id)}
+      <button
+        type="button"
+        onclick={() => {
+          if (runtimeState?.onClick) {
+            runtimeState.onClick();
+          } else {
+            workspaceStore.openExtensionsView();
+          }
+        }}
+        class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono transition hover:bg-zinc-800/80 hover:text-zinc-200 cursor-pointer"
+        title={runtimeState?.tooltip ?? `${item.extensionName}: ${item.id}`}
+      >
+        <Puzzle class="h-3 w-3 text-indigo-400" />
+        <span>{runtimeState?.text ?? item.id}</span>
+      </button>
+      <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
+    {/each}
+
     <!-- Active Session Token / Context Window % -->
     <div
       class="inline-flex items-center gap-1.5 hover:text-zinc-200 font-mono"
@@ -205,22 +249,24 @@
       <span class="rounded bg-zinc-800/80 px-1 py-0.2 text-[10px] text-zinc-300 font-semibold">{contextPercent}%</span>
     </div>
 
-    <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
+    <!-- Current Session Cost & Total Cumulative Cost (contributed by pipan.cost-analytics) -->
+    {#if extensionRegistry.isStatusBarItemEnabled('cost-spend')}
+      <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
 
-    <!-- Current Session Cost & Total Cumulative Cost (Clicks to open Cost Page) -->
-    <button
-      type="button"
-      onclick={() => workspaceStore.toggleCostView()}
-      class="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 transition hover:bg-zinc-800/80 hover:text-zinc-100 cursor-pointer {workspaceStore.currentView === 'cost' ? 'bg-indigo-500/15 text-indigo-200 ring-1 ring-indigo-500/30' : ''}"
-      title="Current session: {formatCost(currentSessionCost)} | Total spend: {formatCost(totalCumulativeCost)} (Click to toggle Cost & Usage Analytics)"
-    >
-      <Coins class="h-3 w-3 text-amber-400" />
-      <span class="font-mono">
-        <span class="text-zinc-400">Sess:</span> <span class="text-zinc-200 font-medium">{formatCost(currentSessionCost)}</span>
-        <span class="text-zinc-600">|</span>
-        <span class="text-zinc-400">Total:</span> <span class="text-emerald-400 font-medium">{formatCost(totalCumulativeCost)}</span>
-      </span>
-    </button>
+      <button
+        type="button"
+        onclick={() => workspaceStore.toggleCostView()}
+        class="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 transition hover:bg-zinc-800/80 hover:text-zinc-100 cursor-pointer {workspaceStore.currentView === 'cost' ? 'bg-indigo-500/15 text-indigo-200 ring-1 ring-indigo-500/30' : ''}"
+        title="Current session: {formatCost(currentSessionCost)} | Total spend: {formatCost(totalCumulativeCost)} (Click to toggle Cost & Usage Analytics)"
+      >
+        <Coins class="h-3 w-3 text-amber-400" />
+        <span class="font-mono">
+          <span class="text-zinc-400">Sess:</span> <span class="text-zinc-200 font-medium">{formatCost(currentSessionCost)}</span>
+          <span class="text-zinc-600">|</span>
+          <span class="text-zinc-400">Total:</span> <span class="text-emerald-400 font-medium">{formatCost(totalCumulativeCost)}</span>
+        </span>
+      </button>
+    {/if}
 
     <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
 
@@ -242,15 +288,17 @@
 
     <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>
 
-    <!-- Extensions Count -->
+    <!-- Extensions Count (Clicks to toggle Extensions Marketplace & Manager) -->
     <button
       type="button"
-      onclick={() => {}}
-      class="inline-flex items-center gap-1 hover:text-zinc-200 cursor-pointer"
-      title="5 Built-in Extensions active: node-graph, github-prs, terminal, files, cost-analytics"
+      onclick={() => workspaceStore.toggleExtensionsView()}
+      class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-zinc-800/80 hover:text-zinc-200 cursor-pointer {workspaceStore.currentView === 'extensions' ? 'bg-indigo-500/15 text-indigo-200 ring-1 ring-indigo-500/30' : ''}"
+      title="{extensionRegistry.enabledExtensions.length} Extensions active: {extensionRegistry.enabledExtensions.map((e) => e.manifest.id).join(', ')} (Click to open Extensions Marketplace & Manager)"
     >
       <Blocks class="h-3 w-3 text-indigo-400" />
-      <span class="font-mono">5 Extensions</span>
+      <span class="font-mono">
+        {extensionRegistry.enabledExtensions.length} {extensionRegistry.enabledExtensions.length === 1 ? 'Extension' : 'Extensions'}
+      </span>
     </button>
 
     <span class="h-3 w-px bg-zinc-800" aria-hidden="true"></span>

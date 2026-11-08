@@ -23,11 +23,14 @@
     X,
     Coins,
     HeartPulse,
-    KeyRound
+    KeyRound,
+    Blocks
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { doctorStore } from '#lib/stores/doctor.svelte.ts';
+  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
+  import ExtensionContributionHost from './ExtensionContributionHost.svelte';
   import type {
     SavedSession,
     SessionFilter,
@@ -35,8 +38,14 @@
     SessionSortBy
   } from '#lib/types/pi.ts';
 
-  let activeTab = $state<'sessions' | 'prs'>('sessions');
+  let activeTab = $state<string>('sessions');
   let isPickingFolder = $state(false);
+
+  $effect(() => {
+    if (activeTab !== 'sessions' && !extensionRegistry.isSidebarTabEnabled(activeTab)) {
+      activeTab = 'sessions';
+    }
+  });
 
   // Inline rename state per session card
   let editingSessionId = $state<string | null>(null);
@@ -234,19 +243,19 @@
     class="flex w-72 shrink-0 flex-col border-r border-zinc-800/80 bg-zinc-900/60 select-none"
   >
     <!-- Top Tab Switcher -->
-    <div class="grid grid-cols-3 gap-1 border-b border-zinc-800/80 p-2">
+    <div class="flex flex-wrap gap-1 border-b border-zinc-800/80 p-2">
       <button
         type="button"
         onclick={() => {
           activeTab = 'sessions';
           workspaceStore.openChatView();
         }}
-        class="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
+        class="inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
           'sessions' && workspaceStore.currentView === 'chat'
           ? 'bg-zinc-800 text-zinc-100 shadow-sm'
           : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
       >
-        <History class="h-3.5 w-3.5 text-indigo-400" />
+        <History class="h-3.5 w-3.5 text-indigo-400 shrink-0" />
         <span class="truncate">Sessions</span>
         {#if chatStore.savedSessions.length > 0}
           <span class="hidden sm:inline-block rounded-full bg-zinc-700/80 px-1 py-0.2 font-mono text-[9px] text-zinc-200 tabular-nums">
@@ -255,32 +264,60 @@
         {/if}
       </button>
 
-      <button
-        type="button"
-        onclick={() => {
-          activeTab = 'prs';
-          workspaceStore.openChatView();
-        }}
-        class="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
-          'prs' && workspaceStore.currentView === 'chat'
-          ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-          : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
-      >
-        <GitPullRequest class="h-3.5 w-3.5 text-sky-400" />
-        <span class="truncate">PRs</span>
-      </button>
+      {#each extensionRegistry.contributedSidebarTabs as tab (tab.id)}
+        {@const TabIcon = tab.iconComponent}
+        <button
+          type="button"
+          onclick={() => {
+            activeTab = tab.id;
+            workspaceStore.openChatView();
+          }}
+          class="inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {activeTab ===
+            tab.id && workspaceStore.currentView === 'chat'
+            ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+            : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
+          title={tab.title}
+        >
+          <TabIcon class="h-3.5 w-3.5 text-sky-400 shrink-0" />
+          <span class="truncate">{tab.title}</span>
+        </button>
+      {/each}
+
+      {#each extensionRegistry.contributedMainViews as view (view.id)}
+        {@const ViewIcon = view.iconComponent}
+        <button
+          type="button"
+          onclick={() => {
+            if (view.id === 'cost') {
+              workspaceStore.toggleCostView();
+            } else {
+              workspaceStore.openMainView(
+                workspaceStore.currentView === view.id ? 'chat' : view.id
+              );
+            }
+          }}
+          class="inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {workspaceStore.currentView ===
+          view.id
+            ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40 shadow-sm'
+            : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
+          title="Open {view.title}"
+        >
+          <ViewIcon class="h-3.5 w-3.5 text-amber-400 shrink-0" />
+          <span class="truncate">{view.title}</span>
+        </button>
+      {/each}
 
       <button
         type="button"
-        onclick={() => workspaceStore.toggleCostView()}
-        class="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {workspaceStore.currentView ===
-        'cost'
-          ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40 shadow-sm'
+        onclick={() => workspaceStore.toggleExtensionsView()}
+        class="inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition cursor-pointer {workspaceStore.currentView ===
+        'extensions'
+          ? 'bg-indigo-500/20 text-indigo-200 border border-indigo-500/40 shadow-sm'
           : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}"
-        title="Open Cost & Usage Analytics"
+        title="Open Extensions Marketplace & Contribution Manager"
       >
-        <Coins class="h-3.5 w-3.5 text-amber-400" />
-        <span class="truncate">Cost</span>
+        <Blocks class="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+        <span class="truncate">Extensions</span>
       </button>
     </div>
 
@@ -659,7 +696,7 @@
           {/each}
         {/if}
       </div>
-    {:else}
+    {:else if activeTab === 'prs'}
       <!-- Pull Requests & Webhook Tunnel Status -->
       <div class="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
         <div class="rounded-xl border border-zinc-800 bg-zinc-900/80 p-3 space-y-2">
@@ -709,6 +746,16 @@
           {/if}
         </div>
       </div>
+    {:else}
+      {@const customTab = extensionRegistry.contributedSidebarTabs.find((t) => t.id === activeTab)}
+      {#if customTab}
+        <ExtensionContributionHost
+          extensionId={customTab.extensionId}
+          contributionId={customTab.id}
+          title={customTab.title}
+          kind="sidebarTab"
+        />
+      {/if}
     {/if}
 
     <!-- Bottom Actions: Login & Configuration + Dependency Doctor -->

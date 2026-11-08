@@ -3,6 +3,7 @@ pub mod approval;
 pub mod auth;
 pub mod db;
 pub mod doctor;
+pub mod extensions;
 pub mod files;
 pub mod fs_explorer;
 pub mod github;
@@ -28,6 +29,10 @@ use db::{
     load_node_positions, save_github_view, save_node_positions, set_graph_direction,
 };
 use doctor::{fix_doctor_issue, run_doctor};
+use extensions::{
+    install_extension_from_folder, install_extension_from_git, list_external_extensions,
+    uninstall_extension,
+};
 use files::read_file_attachment;
 use fs_explorer::{get_git_file_statuses, list_workspace_files, read_workspace_file};
 use github::{
@@ -148,7 +153,11 @@ pub fn run() {
             delete_custom_model_endpoint,
             get_github_auth_details,
             run_doctor,
-            fix_doctor_issue
+            fix_doctor_issue,
+            list_external_extensions,
+            install_extension_from_folder,
+            install_extension_from_git,
+            uninstall_extension
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

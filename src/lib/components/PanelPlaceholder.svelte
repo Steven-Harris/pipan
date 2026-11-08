@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { PANEL_BY_ID } from '#lib/workspace/panels.ts';
+  import { getPanelDefinition } from '#lib/workspace/panels.ts';
   import type { PanelId } from '#lib/stores/workspace.svelte.ts';
 
   let { id }: { id: PanelId } = $props();
-  const def = $derived(PANEL_BY_ID[id]);
+  const def = $derived(getPanelDefinition(id));
   const Icon = $derived(def.icon);
 </script>
 

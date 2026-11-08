@@ -5,16 +5,20 @@
   import { flowStore } from '#lib/stores/flow.svelte.ts';
   import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
   import { doctorStore } from '#lib/stores/doctor.svelte.ts';
+  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import SessionHeader from '#lib/components/SessionHeader.svelte';
   import Sidebar from '#lib/components/Sidebar.svelte';
   import WorkspaceLayout from '#lib/components/WorkspaceLayout.svelte';
   import StatusBar from '#lib/components/StatusBar.svelte';
   import CostAnalyticsPage from '#lib/components/CostAnalyticsPage.svelte';
+  import ExtensionsManagerPage from '#lib/components/ExtensionsManagerPage.svelte';
+  import ExtensionContributionHost from '#lib/components/ExtensionContributionHost.svelte';
   import DoctorModal from '#lib/components/DoctorModal.svelte';
   import SettingsAuthModal from '#lib/components/SettingsAuthModal.svelte';
 
   onMount(() => {
     workspaceStore.init();
+    void extensionRegistry.init();
     chatStore.init();
     flowStore.init();
     void doctorStore.init();
@@ -47,8 +51,24 @@
     <Sidebar />
 
     <main class="flex flex-1 min-w-0 flex-col overflow-hidden">
-      {#if workspaceStore.currentView === 'cost'}
+      {#if workspaceStore.currentView === 'extensions'}
+        <ExtensionsManagerPage />
+      {:else if workspaceStore.currentView === 'cost' && extensionRegistry.isMainViewEnabled('cost')}
         <CostAnalyticsPage />
+      {:else if workspaceStore.currentView !== 'chat'}
+        {@const customView = extensionRegistry.contributedMainViews.find(
+          (v) => v.id === workspaceStore.currentView
+        )}
+        {#if customView}
+          <ExtensionContributionHost
+            extensionId={customView.extensionId}
+            contributionId={customView.id}
+            title={customView.title}
+            kind="mainView"
+          />
+        {:else}
+          <WorkspaceLayout />
+        {/if}
       {:else}
         <WorkspaceLayout />
       {/if}

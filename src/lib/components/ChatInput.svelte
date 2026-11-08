@@ -16,6 +16,7 @@
     Upload
   } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import type {
     PiSkillItem,
     PromptAttachment,
@@ -87,6 +88,14 @@
       const after = draft.slice(activeSlashMatch.end);
       draft = `${before}${after}`.replace(/^\s+/, '');
       activeSlashMatch = null;
+    }
+    if (skill.source === 'extension' && extensionRegistry.executeSlashCommand(skill.name)) {
+      isSkillPopoverOpen = false;
+      queueMicrotask(() => {
+        autoResize();
+        textareaEl?.focus();
+      });
+      return;
     }
     if (!selectedSkills.some((s) => s.name === skill.name && s.source === skill.source)) {
       selectedSkills = [...selectedSkills, skill];
@@ -605,16 +614,18 @@
             />
           </div>
 
-          <button
-            type="button"
-            onclick={() => void handlePickFiles()}
-            disabled={isPickingFiles}
-            class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800/90 disabled:opacity-50 cursor-pointer"
-            title="Attach images or source files to prompt"
-          >
-            <Paperclip class="h-3.5 w-3.5 text-sky-400" />
-            <span>Attach Files</span>
-          </button>
+          {#if extensionRegistry.isExtensionEnabled('pipan.files')}
+            <button
+              type="button"
+              onclick={() => void handlePickFiles()}
+              disabled={isPickingFiles}
+              class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800/90 disabled:opacity-50 cursor-pointer"
+              title="Attach images or source files to prompt"
+            >
+              <Paperclip class="h-3.5 w-3.5 text-sky-400" />
+              <span>Attach Files</span>
+            </button>
+          {/if}
         </div>
 
         <span class="hidden sm:inline text-[11px] text-zinc-500">
