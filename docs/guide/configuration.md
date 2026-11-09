@@ -4,11 +4,11 @@ Configure models, providers, agent behaviors, and workspace preferences.
 
 ## Overview
 
-Pipan stores settings in local JSON files and an SQLite database. You can manage most settings through the in-app Settings modal or by editing configuration files directly.
+PiPan stores settings in local JSON files and an SQLite database. You can manage most settings through the in-app Settings modal or by editing configuration files directly.
 
 ## Provider & Model Setup
 
-Pipan supports all major LLM providers supported by the `pi` engine.
+PiPan supports all major LLM providers supported by the `pi` engine.
 
 ### Supported Providers
 
@@ -33,7 +33,7 @@ Store API keys securely in `~/.pi/agent/auth.json`:
 }
 ```
 
-The Pipan Settings dialog masks your keys in the UI to protect sensitive credentials during screen shares.
+The PiPan Settings dialog masks your keys in the UI to protect sensitive credentials during screen shares.
 
 ## Agent Behavior
 
@@ -49,7 +49,7 @@ Controls reasoning trace detail for thinking models:
 
 ### Context Compaction
 
-When conversation history grows close to model context limits, Pipan triggers compaction:
+When conversation history grows close to model context limits, PiPan triggers compaction:
 - Compresses previous turns into a concise summary.
 - Preserves file paths, test results, and recent context.
 - Prevents context overflow errors.
@@ -62,15 +62,15 @@ When conversation history grows close to model context limits, Pipan triggers co
 
 ## GitHub Authentication
 
-Pipan supports two login methods for GitHub features:
+PiPan supports two login methods for GitHub features:
 
 ### 1. Browser Login (Recommended)
 
 1. Open **Settings > GitHub**.
 2. Click **Login with Browser**.
-3. Pipan copies a one-time 8-character device code and opens GitHub in your browser.
+3. PiPan copies a one-time 8-character device code and opens GitHub in your browser.
 4. Paste the code and grant access.
-5. Pipan detects successful authentication automatically.
+5. PiPan detects successful authentication automatically.
 
 ### 2. Personal Access Token
 
@@ -80,7 +80,7 @@ Pipan supports two login methods for GitHub features:
 
 ## Configuration Files
 
-Pipan uses standard paths for configuration and data:
+PiPan uses standard paths for configuration and data:
 
 | File / Folder | Purpose |
 | :--- | :--- |

@@ -35,7 +35,7 @@ export interface ExtensionSlashCommandContribution {
   description: string;
 }
 
-export interface PipanExtensionContributes {
+export interface PiPanExtensionContributes {
   panels?: ExtensionPanelContribution[];
   sidebarTabs?: ExtensionSidebarTabContribution[];
   mainViews?: ExtensionMainViewContribution[];
@@ -43,7 +43,7 @@ export interface PipanExtensionContributes {
   slashCommands?: ExtensionSlashCommandContribution[];
 }
 
-export interface PipanExtensionManifest {
+export interface PiPanExtensionManifest {
   id: string;
   name: string;
   version: string;
@@ -51,12 +51,12 @@ export interface PipanExtensionManifest {
   author: string;
   builtin?: boolean;
   enabledByDefault?: boolean;
-  contributes: PipanExtensionContributes;
+  contributes: PiPanExtensionContributes;
   entry?: string; // Relative JS module path for external plugins
 }
 
 export interface ExternalExtensionBundle {
-  manifest: PipanExtensionManifest;
+  manifest: PiPanExtensionManifest;
   installPath: string;
   entryCode?: string;
   sourceUrl?: string;
@@ -97,39 +97,39 @@ export interface ResolvedSlashCommandContribution extends ExtensionSlashCommandC
   builtin: boolean;
 }
 
-export interface PipanExtensionRenderContext {
+export interface PiPanExtensionRenderContext {
   extensionId: string;
   contributionId: string;
   kind: 'panel' | 'sidebarTab' | 'mainView';
-  manifest: PipanExtensionManifest;
+  manifest: PiPanExtensionManifest;
 }
 
-export type PipanContributionRenderFn = (
+export type PiPanContributionRenderFn = (
   container: HTMLElement,
-  context: PipanExtensionRenderContext
+  context: PiPanExtensionRenderContext
 ) => void | (() => void);
 
-export interface PipanRuntimeStatusBarItemState {
+export interface PiPanRuntimeStatusBarItemState {
   text: string;
   tooltip?: string;
   badge?: string;
   onClick?: () => void;
 }
 
-export interface PipanRuntimeExtensionRegistration {
+export interface PiPanRuntimeExtensionRegistration {
   id: string;
-  manifest?: Partial<PipanExtensionManifest>;
-  panels?: Record<string, PipanContributionRenderFn | { html?: string; text?: string }>;
-  sidebarTabs?: Record<string, PipanContributionRenderFn | { html?: string; text?: string }>;
-  mainViews?: Record<string, PipanContributionRenderFn | { html?: string; text?: string }>;
-  statusBarItems?: Record<string, PipanRuntimeStatusBarItemState>;
+  manifest?: Partial<PiPanExtensionManifest>;
+  panels?: Record<string, PiPanContributionRenderFn | { html?: string; text?: string }>;
+  sidebarTabs?: Record<string, PiPanContributionRenderFn | { html?: string; text?: string }>;
+  mainViews?: Record<string, PiPanContributionRenderFn | { html?: string; text?: string }>;
+  statusBarItems?: Record<string, PiPanRuntimeStatusBarItemState>;
   slashCommands?: Record<string, (args: string) => void | Promise<void> | string | Promise<string>>;
   activate?: () => void | (() => void);
   deactivate?: () => void;
 }
 
 export interface RegisteredExtension {
-  manifest: PipanExtensionManifest;
+  manifest: PiPanExtensionManifest;
   builtin: boolean;
   installed: boolean;
   enabled: boolean;
@@ -140,9 +140,9 @@ export interface RegisteredExtension {
   error?: string | null;
 }
 
-export interface PipanHostGlobalApi {
+export interface PiPanHostGlobalApi {
   readonly version: string;
-  registerExtension: (registration: PipanRuntimeExtensionRegistration) => void;
+  registerExtension: (registration: PiPanRuntimeExtensionRegistration) => void;
   openPanel: (panelId: string) => void;
   closePanel: (panelId: string) => void;
   openMainView: (viewId: string) => void;
@@ -150,6 +150,6 @@ export interface PipanHostGlobalApi {
 
 declare global {
   interface Window {
-    pipan?: PipanHostGlobalApi;
+    pipan?: PiPanHostGlobalApi;
   }
 }

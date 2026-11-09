@@ -396,7 +396,7 @@ pub fn evaluate_pi_auth_check(agent_dir: Option<&Path>) -> DoctorCheckResult {
                     .to_string(),
             ),
             manual_instructions: vec![
-                "Open Pipan Settings & Login -> Pi Authentication tab and enter an API key (Anthropic, OpenAI, Gemini, OpenRouter, etc.).".to_string(),
+                "Open PiPan Settings & Login -> Pi Authentication tab and enter an API key (Anthropic, OpenAI, Gemini, OpenRouter, etc.).".to_string(),
                 "Or run `pi` in an interactive terminal to complete OAuth login.".to_string(),
             ],
             fix_action: "open_pi_auth".to_string(),
@@ -906,7 +906,7 @@ pub async fn fix_doctor_issue(
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .unwrap_or("Pipan Developer");
+            .unwrap_or("PiPan Developer");
         let email = git_user_email
             .as_deref()
             .map(str::trim)

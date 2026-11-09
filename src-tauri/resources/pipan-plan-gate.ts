@@ -1,9 +1,9 @@
 /**
- * Pipan "Plan Mode" gate (Phase 5).
+ * PiPan "Plan Mode" gate (Phase 5).
  *
  * Loaded into every worktree Pi session with `pi --extension <this file>`. It intercepts
  * destructive `bash` tool calls (file deletion, `git push`, hard resets, ...) and pauses the
- * call by awaiting an RPC dialog. Pipan's Rust core recognises the dialog by its title
+ * call by awaiting an RPC dialog. PiPan's Rust core recognises the dialog by its title
  * prefix, renders it as an `ApprovalNode` in the Svelte Flow dashboard and answers with an
  * `extension_ui_response` once the user clicks Approve / Modify / Reject.
  *
@@ -85,7 +85,7 @@ export default function (pi: ExtensionAPILike) {
 		if (!rule) return undefined;
 
 		if (!ctx.hasUI) {
-			return { block: true, reason: `Blocked by Pipan Plan Mode (${rule.label.toLowerCase()}); no approval UI available.` };
+			return { block: true, reason: `Blocked by PiPan Plan Mode (${rule.label.toLowerCase()}); no approval UI available.` };
 		}
 
 		const payload = {
@@ -115,6 +115,6 @@ export default function (pi: ExtensionAPILike) {
 			}
 		}
 
-		return { block: true, reason: "Rejected by the user in Pipan Plan Mode. Do not retry this action; ask for guidance or choose a safer approach." };
+		return { block: true, reason: "Rejected by the user in PiPan Plan Mode. Do not retry this action; ask for guidance or choose a safer approach." };
 	});
 }

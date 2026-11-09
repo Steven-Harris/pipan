@@ -16,19 +16,19 @@ import {
   Terminal,
   Wand2
 } from 'lucide-svelte';
-import type { ExtensionIconComponent, PipanExtensionManifest } from './types.ts';
+import type { ExtensionIconComponent, PiPanExtensionManifest } from './types.ts';
 
 /**
  * 1. `pipan.node-graph` (`pipan.nodes`) — Orchestration Node Graph (DAG)
  * Contributes the Nodes split panel & graph inspector.
  */
-export const NODE_GRAPH_EXTENSION: PipanExtensionManifest = {
+export const NODE_GRAPH_EXTENSION: PiPanExtensionManifest = {
   id: 'pipan.node-graph',
   name: 'Orchestration Node Graph (DAG)',
   version: '0.2.0',
   description:
     'Contributes the Nodes DAG split panel, interactive node inspector, and per-session TB/LR coordinate persistence.',
-  author: 'Pipan Core',
+  author: 'PiPan Core',
   builtin: true,
   enabledByDefault: true,
   contributes: {
@@ -54,13 +54,13 @@ export const NODE_GRAPH_EXTENSION: PipanExtensionManifest = {
  * 2. `pipan.github-prs` (`pipan.github`) — GitHub Pull Requests & Reviews
  * Contributes the PR sidebar tab, PR session panel, and webhook status bar item.
  */
-export const GITHUB_PRS_EXTENSION: PipanExtensionManifest = {
+export const GITHUB_PRS_EXTENSION: PiPanExtensionManifest = {
   id: 'pipan.github-prs',
   name: 'GitHub Pull Requests & Reviews',
   version: '0.2.0',
   description:
     'Contributes the PR sidebar tab, Pull Requests review/diff/merge session panel, and live gh webhook forward status bar item.',
-  author: 'Pipan Core',
+  author: 'PiPan Core',
   builtin: true,
   enabledByDefault: true,
   contributes: {
@@ -100,13 +100,13 @@ export const GITHUB_PRS_EXTENSION: PipanExtensionManifest = {
  * 3. `pipan.terminal` — Integrated Workspace Terminal
  * Contributes the Terminal session panel.
  */
-export const TERMINAL_EXTENSION: PipanExtensionManifest = {
+export const TERMINAL_EXTENSION: PiPanExtensionManifest = {
   id: 'pipan.terminal',
   name: 'Integrated Workspace Terminal',
   version: '0.2.0',
   description:
     'Contributes the integrated shell session panel bound to the active workspace directory with Pi RPC bash bridge.',
-  author: 'Pipan Core',
+  author: 'PiPan Core',
   builtin: true,
   enabledByDefault: true,
   contributes: {
@@ -132,13 +132,13 @@ export const TERMINAL_EXTENSION: PipanExtensionManifest = {
  * 4. `pipan.files` — Workspace File Explorer
  * Contributes the Files session panel and prompt file tree picker.
  */
-export const FILES_EXTENSION: PipanExtensionManifest = {
+export const FILES_EXTENSION: PiPanExtensionManifest = {
   id: 'pipan.files',
   name: 'Workspace File Explorer',
   version: '0.2.0',
   description:
     'Contributes the Files session panel with Git status badges, syntax preview, and prompt file tree attachment picker.',
-  author: 'Pipan Core',
+  author: 'PiPan Core',
   builtin: true,
   enabledByDefault: true,
   contributes: {
@@ -164,13 +164,13 @@ export const FILES_EXTENSION: PipanExtensionManifest = {
  * 5. `pipan.cost-analytics` (`pipan.analytics`) — Cost & Usage Analytics
  * Contributes the Cost main view and status bar spend widget.
  */
-export const COST_ANALYTICS_EXTENSION: PipanExtensionManifest = {
+export const COST_ANALYTICS_EXTENSION: PiPanExtensionManifest = {
   id: 'pipan.cost-analytics',
   name: 'Cost & Usage Analytics',
   version: '0.2.0',
   description:
     'Contributes the Cost & Usage Analytics main view (Day/Week/Month/Year) and the status bar session/cumulative spend widget.',
-  author: 'Pipan Core',
+  author: 'PiPan Core',
   builtin: true,
   enabledByDefault: true,
   contributes: {
@@ -208,7 +208,7 @@ export const PIPAN_ANALYTICS_EXTENSION = COST_ANALYTICS_EXTENSION;
  * Ordered so contributed session panels default to `nodes`, `terminal`, `files`, `prs`
  * in the session header toolbar.
  */
-export const BUILTIN_EXTENSIONS: readonly PipanExtensionManifest[] = [
+export const BUILTIN_EXTENSIONS: readonly PiPanExtensionManifest[] = [
   NODE_GRAPH_EXTENSION,
   TERMINAL_EXTENSION,
   FILES_EXTENSION,

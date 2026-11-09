@@ -1,4 +1,4 @@
-# Pipan
+# PiPan
 
 A native desktop application to run, inspect, and steer Pi AI coding agents.
 
@@ -8,11 +8,11 @@ A native desktop application to run, inspect, and steer Pi AI coding agents.
 
 ---
 
-## What is Pipan?
+## What is PiPan?
 
-Pipan is a desktop application to run, inspect, and steer `pi` coding agents. It wraps the `pi` CLI in a visual workspace built with Tauri v2, Svelte 5, and Rust.
+PiPan is a desktop application to run, inspect, and steer `pi` coding agents. It wraps the `pi` CLI in a visual workspace built with Tauri v2, Svelte 5, and Rust.
 
-Instead of running `pi` in a plain terminal, Pipan communicates with `pi` using JSON-RPC over `stdin` and `stdout`. This lets you follow model reasoning steps, monitor tool calls, track token costs, steer tasks in real time, and view your workflow as an interactive node graph.
+Instead of running `pi` in a plain terminal, PiPan communicates with `pi` using JSON-RPC over `stdin` and `stdout`. This lets you follow model reasoning steps, monitor tool calls, track token costs, steer tasks in real time, and view your workflow as an interactive node graph.
 
 ---
 
@@ -59,7 +59,7 @@ Instead of running `pi` in a plain terminal, Pipan communicates with `pi` using 
 
 ## Prerequisites
 
-Install these tools before running Pipan:
+Install these tools before running PiPan:
 
 1. **[pi CLI](https://github.com/badlogic/pi-mono):** Install and verify it is available on your `PATH`:
    ```bash

@@ -1,4 +1,4 @@
-//! Pipan's own SQLite store (`<app_local_data_dir>/pipan.db`, WAL mode).
+//! PiPan's own SQLite store (`<app_local_data_dir>/pipan.db`, WAL mode).
 //!
 //! Schema is versioned through `PRAGMA user_version`; each migration runs once, in
 //! order, inside a transaction. Later phases append migrations rather than editing

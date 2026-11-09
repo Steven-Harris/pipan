@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({
-  title: 'Pipan Documentation',
+  title: 'PiPan Documentation',
   description: 'Desktop GUI and orchestration workspace for the pi AI coding agent',
   base: process.env.BASE_PATH || '/pipan/',
   themeConfig: {

@@ -83,7 +83,7 @@
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
     role="dialog"
     aria-modal="true"
-    aria-label="Pipan Dependency Doctor"
+    aria-label="PiPan Dependency Doctor"
   >
     <div class="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl">
       <!-- Header -->

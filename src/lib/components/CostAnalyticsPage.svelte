@@ -111,7 +111,7 @@
         </div>
         <div>
           <h1 class="text-sm font-semibold tracking-tight text-zinc-100">Cost & Usage Analytics</h1>
-          <p class="text-[10px] text-zinc-400">Indexed from Pipan sessions and ~/.pi/agent transcripts</p>
+          <p class="text-[10px] text-zinc-400">Indexed from PiPan sessions and ~/.pi/agent transcripts</p>
         </div>
       </div>
     </div>

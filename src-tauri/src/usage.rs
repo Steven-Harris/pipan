@@ -1,7 +1,7 @@
 //! Cost & Usage Analytics backend (`usage.rs`).
 //!
 //! Indexes Pi session transcripts from `~/.pi/agent/sessions/**/*.jsonl` and
-//! `<app_local_data_dir>/sessions/**/*.jsonl` into Pipan's local SQLite `usage_ledger`.
+//! `<app_local_data_dir>/sessions/**/*.jsonl` into PiPan's local SQLite `usage_ledger`.
 //! Uses `(path, mtime, byte_offset)` checkpoints for incremental rescans and
 //! deduplicates entries via the `(session_id, message_id)` primary key.
 //!
@@ -490,7 +490,7 @@ pub fn discover_jsonl_files(root: &Path, max_depth: usize) -> Vec<PathBuf> {
     out
 }
 
-/// Standard paths where Pi sessions and Pipan transcripts live.
+/// Standard paths where Pi sessions and PiPan transcripts live.
 pub fn default_scan_directories(app_opt: Option<&AppHandle>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 

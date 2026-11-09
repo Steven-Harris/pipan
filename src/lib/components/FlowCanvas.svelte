@@ -41,7 +41,7 @@
   import ActionNode from './nodes/ActionNode.svelte';
   import ApprovalNode from './nodes/ApprovalNode.svelte';
 
-  type PipanNode = FlowNode;
+  type PiPanNode = FlowNode;
 
   const nodeTypes: NodeTypes = {
     pipan: FlowNodeCard,
@@ -51,7 +51,7 @@
     approval: ApprovalNode
   };
 
-  let nodes = $state.raw<PipanNode[]>([]);
+  let nodes = $state.raw<PiPanNode[]>([]);
   let edges = $state.raw<Edge[]>([]);
   let canvasWidth = $state(0);
   let canvasHeight = $state(0);
@@ -72,10 +72,10 @@
   );
 
   function buildOrchestrationGraph(): {
-    nodes: PipanNode[];
+    nodes: PiPanNode[];
     edges: Edge[];
   } {
-    const builtNodes: PipanNode[] = [];
+    const builtNodes: PiPanNode[] = [];
     const builtEdges: Edge[] = [];
 
     const sessionState = chatStore.sessionStatus.state;
@@ -370,7 +370,7 @@
   });
 
   function applyGraph(
-    built: { nodes: PipanNode[]; edges: Edge[] },
+    built: { nodes: PiPanNode[]; edges: Edge[] },
     context: string,
     dir: LayoutDirection,
     pinned: ReturnType<typeof graphLayoutStore.positionsFor>
@@ -420,7 +420,7 @@
 
   /** True if any of the nodes would render (even partly) outside the visible canvas. */
   function isOutsideViewport(
-    added: PipanNode[],
+    added: PiPanNode[],
     measured: Map<string, { width: number; height: number }>
   ): boolean {
     if (!canvasWidth || !canvasHeight) return true;
@@ -452,8 +452,8 @@
     targetNode,
     nodes: dragged
   }: {
-    targetNode: PipanNode | null;
-    nodes: PipanNode[];
+    targetNode: PiPanNode | null;
+    nodes: PiPanNode[];
   }) {
     const moved: Record<string, { x: number; y: number }> = {};
     for (const n of dragged.length > 0 ? dragged : targetNode ? [targetNode] : []) {

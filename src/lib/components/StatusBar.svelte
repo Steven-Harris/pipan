@@ -321,7 +321,7 @@
       type="button"
       onclick={() => doctorStore.openDoctorModal()}
       class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-zinc-800/80 cursor-pointer"
-      title="Click to open Pipan Dependency Doctor & Auto-Fixer"
+      title="Click to open PiPan Dependency Doctor & Auto-Fixer"
     >
       {#if doctorStore.report?.overallStatus === 'fail'}
         <HeartPulse class="h-3 w-3 text-rose-400" />
