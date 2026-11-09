@@ -1,4 +1,4 @@
-//! End-to-end cross-phase verification suite for Pipan v0.2.
+//! End-to-end cross-phase verification suite for PiPan v0.2.
 //!
 //! Exercises SQLite schema migrations (v1..v4), session lifecycle + node graph
 //! coordinate persistence & cascade deletion, usage analytics + GitHub PR view

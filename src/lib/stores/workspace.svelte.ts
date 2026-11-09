@@ -1,7 +1,7 @@
 // Workspace layout state: which auxiliary panels sit next to the chat, how the
 // split is oriented, and how much room the panel area takes.
 //
-// Persisted to localStorage (user settings). Pipan's SQLite store arrives with
+// Persisted to localStorage (user settings). PiPan's SQLite store arrives with
 // persistent sessions; this key is the migration source for it.
 
 import { githubStore } from '#lib/stores/github.svelte.ts';

@@ -12,13 +12,13 @@ Software engineers and AI-assisted developers who run and supervise `pi` coding 
 
 ## Product Purpose
 
-Pipan is a native desktop application running via Tauri v2 to run, inspect, and steer the `pi` AI coding agent. Pipan turns the `pi` CLI into an interactive desktop workspace. It provides live streaming chat, model reasoning inspection, tool-call cards, a living DAG node graph, GitHub pull request workflows, an embedded terminal, a native file explorer, cost analytics, and an in-app dependency Doctor.
+PiPan is a native desktop application running via Tauri v2 to run, inspect, and steer the `pi` AI coding agent. PiPan turns the `pi` CLI into an interactive desktop workspace. It provides live streaming chat, model reasoning inspection, tool-call cards, a living DAG node graph, GitHub pull request workflows, an embedded terminal, a native file explorer, cost analytics, and an in-app dependency Doctor.
 
 Success means developers can launch isolated or directory-bound `pi` sessions, watch every thought, tool invocation, and subagent step in real time, and intervene (steer, queue follow-ups, abort, or approve gated actions) without losing context or risking unapproved host repository mutations.
 
 ## Positioning
 
-Pipan is a native desktop application running via Tauri v2. Unlike terminal-only CLI harnesses or opaque chat wrappers, Pipan pairs direct `pi --mode rpc` sidecar process control with isolated workspace execution (headless temp directories or Git worktrees) and direct `gh` CLI and local webhook event streams. This approach eliminates MCP server overhead and REST polling limits while exposing structured telemetry and human steering controls.
+PiPan is a native desktop application running via Tauri v2. Unlike terminal-only CLI harnesses or opaque chat wrappers, PiPan pairs direct `pi --mode rpc` sidecar process control with isolated workspace execution (headless temp directories or Git worktrees) and direct `gh` CLI and local webhook event streams. This approach eliminates MCP server overhead and REST polling limits while exposing structured telemetry and human steering controls.
 
 ## Operating Context
 
@@ -45,8 +45,8 @@ Pipan is a native desktop application running via Tauri v2. Unlike terminal-only
 - **Action Approval System (`src-tauri/src/approval.rs`):** Intercepts sensitive actions and surfaces approval requests for user review and resolution before execution.
 
 ### Architectural Constraints
-- **Strict JSON-RPC Communication:** Pipan communicates with `pi` exclusively as a sidecar process over JSON-RPC (`stdin`/`stdout`), never by scraping terminal output.
-- **Direct CLI Primitives over Middleware:** All GitHub operations run directly through `gh` CLI commands and local webhook forwarding (`gh webhook forward`). Pipan avoids MCP servers and REST polling loops.
+- **Strict JSON-RPC Communication:** PiPan communicates with `pi` exclusively as a sidecar process over JSON-RPC (`stdin`/`stdout`), never by scraping terminal output.
+- **Direct CLI Primitives over Middleware:** All GitHub operations run directly through `gh` CLI commands and local webhook forwarding (`gh webhook forward`). PiPan avoids MCP servers and REST polling loops.
 - **Workspace Isolation:** Multi-session workflows isolate runs inside Git worktrees or temporary directories to protect the host checkout.
 - **Tech Stack:** Tauri v2 (Rust, `tokio`, `rusqlite`, `serde_json`), Svelte 5 (Runes, SvelteKit static adapter), Tailwind CSS v4, TypeScript, `@xyflow/svelte`, and `lucide-svelte`.
 
@@ -59,7 +59,7 @@ Pipan is a native desktop application running via Tauri v2. Unlike terminal-only
 
 ## Brand Commitments
 
-- **Product Name & Identifier:** `pipan` (`com.steven-harris.pipan`).
+- **Product Name & Identifier:** `PiPan` / `pipan` (`com.steven-harris.pipan`).
 
 ## Evidence on Hand
 

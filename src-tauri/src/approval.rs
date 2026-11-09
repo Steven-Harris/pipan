@@ -1,4 +1,4 @@
-//! Interceptor and approval management for Pipan's "Plan Mode" (Phase 5).
+//! Interceptor and approval management for PiPan's "Plan Mode" (Phase 5).
 //!
 //! Destructive operations (file deletion, `git push`, hard resets, ...) are intercepted
 //! before execution. When the Pi process requests an approval dialog via RPC
@@ -325,7 +325,7 @@ pub fn ensure_plan_gate_extension(app: &AppHandle) -> Result<PathBuf, String> {
         .join("extensions");
     fs::create_dir_all(&dir).map_err(|e| format!("Failed to create extension dir: {}", e))?;
     let path = dir.join("pipan-plan-gate.ts");
-    // Write unconditionally to guarantee hot updates on newer Pipan builds.
+    // Write unconditionally to guarantee hot updates on newer PiPan builds.
     fs::write(&path, PLAN_GATE_EXTENSION_SOURCE)
         .map_err(|e| format!("Failed to write plan gate extension: {}", e))?;
     Ok(path)

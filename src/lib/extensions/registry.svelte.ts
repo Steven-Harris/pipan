@@ -9,9 +9,9 @@ import {
 } from './builtin.ts';
 import type {
   ExternalExtensionBundle,
-  PipanExtensionManifest,
-  PipanRuntimeExtensionRegistration,
-  PipanRuntimeStatusBarItemState,
+  PiPanExtensionManifest,
+  PiPanRuntimeExtensionRegistration,
+  PiPanRuntimeStatusBarItemState,
   RegisteredExtension,
   ResolvedMainViewContribution,
   ResolvedPanelContribution,
@@ -70,7 +70,7 @@ function createInitialBuiltinList(prefs: PersistedExtensionsMap = {}): Registere
 
 class ExtensionRegistry {
   extensions = $state<RegisteredExtension[]>(createInitialBuiltinList());
-  runtimeRegistrations = $state<Record<string, PipanRuntimeExtensionRegistration>>({});
+  runtimeRegistrations = $state<Record<string, PiPanRuntimeExtensionRegistration>>({});
   loading = $state<boolean>(false);
   error = $state<string | null>(null);
 
@@ -220,7 +220,7 @@ class ExtensionRegistry {
   getRuntimeStatusBarItemState(
     extensionId: string,
     itemId: string
-  ): PipanRuntimeStatusBarItemState | null {
+  ): PiPanRuntimeStatusBarItemState | null {
     const reg = this.runtimeRegistrations[extensionId];
     return reg?.statusBarItems?.[itemId] ?? null;
   }
@@ -241,7 +241,7 @@ class ExtensionRegistry {
     if (typeof window === 'undefined') return;
     window.pipan = {
       version: '0.2.0',
-      registerExtension: (registration: PipanRuntimeExtensionRegistration) => {
+      registerExtension: (registration: PiPanRuntimeExtensionRegistration) => {
         this.registerRuntimeExtension(registration);
       },
       openPanel: (panelId: string) => {
@@ -321,7 +321,7 @@ class ExtensionRegistry {
     }
   }
 
-  registerRuntimeExtension(registration: PipanRuntimeExtensionRegistration): void {
+  registerRuntimeExtension(registration: PiPanRuntimeExtensionRegistration): void {
     if (!registration || typeof registration.id !== 'string' || !registration.id.trim()) {
       return;
     }
@@ -337,11 +337,11 @@ class ExtensionRegistry {
 
     if (existingIdx === -1 && registration.manifest) {
       const m = registration.manifest;
-      const manifest: PipanExtensionManifest = {
+      const manifest: PiPanExtensionManifest = {
         id: resolvedId,
         name: m.name?.trim() || resolvedId,
         version: m.version?.trim() || '0.1.0',
-        description: m.description?.trim() || 'Runtime registered Pipan plugin',
+        description: m.description?.trim() || 'Runtime registered PiPan plugin',
         author: m.author?.trim() || 'External Plugin',
         builtin: false,
         enabledByDefault: m.enabledByDefault ?? true,

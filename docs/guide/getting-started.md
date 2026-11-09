@@ -1,12 +1,12 @@
 # Getting Started
 
-Get up and running with Pipan.
+Get up and running with PiPan.
 
 ## Introduction {#introduction}
 
-Pipan is a native desktop app for the `pi` AI coding agent. It runs on Windows, macOS, and Linux.
+PiPan is a native desktop app for the `pi` AI coding agent. It runs on Windows, macOS, and Linux.
 
-Most agent tools wrap a terminal window. Pipan takes a different path. It runs `pi` as a background JSON-RPC child process. This architecture gives you total visibility and control:
+Most agent tools wrap a terminal window. PiPan takes a different path. It runs `pi` as a background JSON-RPC child process. This architecture gives you total visibility and control:
 
 - Read internal thoughts as they stream.
 - Inspect tool calls, arguments, and run times.
@@ -15,7 +15,7 @@ Most agent tools wrap a terminal window. Pipan takes a different path. It runs `
 
 ## Installation {#installation}
 
-Follow these steps to install Pipan and its requirements.
+Follow these steps to install PiPan and its requirements.
 
 ### Prerequisites
 
@@ -36,17 +36,17 @@ Optional tools:
 - `git`: Required for source control and worktree features.
 - `gh`: Required for GitHub pull request views and reviews.
 
-### Download Pipan
+### Download PiPan
 
 Download the latest installer from the [GitHub Releases](https://github.com/Steven-Harris/pipan/releases) page:
 
 - **Windows**: Download the `.msi` or `.exe` installer.
-- **macOS**: Download the `.dmg` file. Pipan supports both Apple Silicon and Intel chips.
+- **macOS**: Download the `.dmg` file. PiPan supports both Apple Silicon and Intel chips.
 - **Linux**: Download the `.AppImage`, `.deb`, or `.rpm` package.
 
 ### Build from Source
 
-You can also build Pipan from source code:
+You can also build PiPan from source code:
 
 ```bash
 # Clone the repository
@@ -64,16 +64,16 @@ pnpm tauri dev
 
 Start your first session in three simple steps:
 
-### Step 1: Launch Pipan
+### Step 1: Launch PiPan
 
-Open Pipan on your machine. The app opens to a clean chat window.
+Open PiPan on your machine. The app opens to a clean chat window.
 
 ### Step 2: Choose a Workspace
 
 Select how you want to work from the top bar:
 
-- **Start Headless**: Pipan creates a temporary scratchpad folder. Use this mode to test ideas safely.
-- **Open Folder**: Pick any project directory on your computer. Pipan sets this folder as the working directory.
+- **Start Headless**: PiPan creates a temporary scratchpad folder. Use this mode to test ideas safely.
+- **Open Folder**: Pick any project directory on your computer. PiPan sets this folder as the working directory.
 
 ### Step 3: Prompt and Steer
 

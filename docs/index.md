@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: "Pipan"
+  name: "PiPan"
   text: "Desktop Orchestration for the Pi AI Agent"
   tagline: Inspect thoughts. Steer in real time. Keep code safe.
   actions:

@@ -1,14 +1,14 @@
 # Extensions
 
-Extend Pipan with custom views, panels, and tools.
+Extend PiPan with custom views, panels, and tools.
 
 ## Plugin Guide {#plugin-guide}
 
-Pipan features a modular plugin architecture inspired by VS Code. You can install community plugins or build your own.
+PiPan features a modular plugin architecture inspired by VS Code. You can install community plugins or build your own.
 
 ### Built-in Extensions
 
-Pipan includes five core plugins by default:
+PiPan includes five core plugins by default:
 
 1. **`pipan.node-graph`**: Live Directed Acyclic Graph (DAG) for agent workflows.
 2. **`pipan.github-prs`**: GitHub pull request viewer, code review, and merge workflows.
@@ -18,7 +18,7 @@ Pipan includes five core plugins by default:
 
 ### Plugin Folder Structure
 
-Pipan discovers extensions in `~/.pipan/extensions/`:
+PiPan discovers extensions in `~/.pipan/extensions/`:
 
 ```
 ~/.pipan/extensions/
@@ -40,7 +40,7 @@ Follow these steps to create a simple plugin:
   "id": "com.example.hello-plugin",
   "name": "Hello Plugin",
   "version": "1.0.0",
-  "description": "Adds a greeting panel to Pipan.",
+  "description": "Adds a greeting panel to PiPan.",
   "author": "Your Name",
   "entry": "index.js",
   "contributes": {
@@ -64,7 +64,7 @@ window.pipan.registerExtension({
   renderPanel(container, context) {
     container.innerHTML = `
       <div style="padding: 1rem;">
-        <h2>Hello from Pipan Extension!</h2>
+        <h2>Hello from PiPan Extension!</h2>
         <p>Current workspace: ${context.workspacePath}</p>
       </div>
     `;
@@ -72,7 +72,7 @@ window.pipan.registerExtension({
 });
 ```
 
-4. Open Pipan. The new panel appears in your auxiliary panel list.
+4. Open PiPan. The new panel appears in your auxiliary panel list.
 
 ### Installing and Managing Plugins
 
@@ -87,7 +87,7 @@ Every plugin requires a valid `manifest.json` file in its root directory.
 ### TypeScript Definition
 
 ```typescript
-export interface PipanExtensionManifest {
+export interface PiPanExtensionManifest {
   /** Unique reverse-domain identifier */
   id: string;
 
@@ -103,7 +103,7 @@ export interface PipanExtensionManifest {
   /** Author or organization name */
   author: string;
 
-  /** True for built-in Pipan extensions */
+  /** True for built-in PiPan extensions */
   builtin?: boolean;
 
   /** Whether the plugin enables automatically on install */
@@ -162,6 +162,6 @@ export interface PipanExtensionManifest {
 | `description` | string | Yes | Short explanation of what the plugin does |
 | `author` | string | Yes | Author or team name |
 | `entry` | string | No | Path to the main JavaScript module |
-| `builtin` | boolean | No | Identifies internal Pipan components |
+| `builtin` | boolean | No | Identifies internal PiPan components |
 | `enabledByDefault` | boolean | No | Default enablement state |
 | `contributes` | object | Yes | Contribution points registered by the plugin |

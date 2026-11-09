@@ -1,12 +1,12 @@
 # AGENTS.md
 
-This document explains the architecture, subsystems, directory layout, commands, and operational rules for Pipan.
+This document explains the architecture, subsystems, directory layout, commands, and operational rules for PiPan.
 
 ---
 
 ## 1. System Overview & Tech Stack
 
-Pipan is an inspectable desktop orchestration workspace for the Pi coding agent. It wraps the Pi CLI in a native desktop interface. Developers can supervise agent reasoning, inspect tool calls, steer execution mid-flight, and manage Git repositories safely.
+PiPan is an inspectable desktop orchestration workspace for the Pi coding agent. It wraps the Pi CLI in a native desktop interface. Developers can supervise agent reasoning, inspect tool calls, steer execution mid-flight, and manage Git repositories safely.
 
 ### Tech Stack
 
@@ -54,10 +54,10 @@ Pipan is an inspectable desktop orchestration workspace for the Pi coding agent.
 
 ### a. Pi JSONL RPC Sidecar
 
-Pipan controls the Pi agent as a background child process via `src-tauri/src/pi_rpc.rs`.
+PiPan controls the Pi agent as a background child process via `src-tauri/src/pi_rpc.rs`.
 
 - **Transport**: Newline-delimited JSON RPC over standard input (`stdin`) and standard output (`stdout`).
-- **Input Commands**: Pipan writes one JSON object per line ending with `\n` to Pi's `stdin`. Commands include:
+- **Input Commands**: PiPan writes one JSON object per line ending with `\n` to Pi's `stdin`. Commands include:
   - `prompt`: Submits a user message, optional images, and streaming behavior (`steer` or `followUp`).
   - `steer`: Injects live guidance while the agent is currently thinking or running tools.
   - `follow_up`: Queues a prompt that executes right after the current turn finishes.
@@ -67,8 +67,8 @@ Pipan controls the Pi agent as a background child process via `src-tauri/src/pi_
   - `set_session_name`: Updates the title of the active session.
   - `get_state`, `get_messages`, `get_available_models`, `get_session_stats`: Inspects session data and host configuration.
 - **Output Event Streams**:
-  - `pi:event`: Pi emits JSON lines on `stdout`. Pipan splits output strictly on `\n` characters (never Unicode line terminators), validates JSON, and emits the payload to the frontend. Sub-events include `thinking_delta`, `text_delta`, `toolcall_start`, `toolcall_delta`, `toolcall_end`, and `done`.
-  - `pi:stderr`: Pipan drains Pi's `stderr` in a background Tokio loop. It forwards lines to the frontend with millisecond timestamps. Draining `stderr` prevents pipe buffer deadlocks.
+  - `pi:event`: Pi emits JSON lines on `stdout`. PiPan splits output strictly on `\n` characters (never Unicode line terminators), validates JSON, and emits the payload to the frontend. Sub-events include `thinking_delta`, `text_delta`, `toolcall_start`, `toolcall_delta`, `toolcall_end`, and `done`.
+  - `pi:stderr`: PiPan drains Pi's `stderr` in a background Tokio loop. It forwards lines to the frontend with millisecond timestamps. Draining `stderr` prevents pipe buffer deadlocks.
   - `pi:status`: Broadcasts process status changes (`disconnected`, `starting`, `running`, `error`), the operating mode, working directory, and operating system process ID (PID).
 - **Session Lifecycle**:
   - **Start**: `start_pi_session` spawns `pi --mode rpc`. If persistent, it passes `--session <path>` pointing to a `.jsonl` transcript file and `--name <label>`. If ephemeral, it passes `--no-session`.
@@ -77,10 +77,10 @@ Pipan controls the Pi agent as a background child process via `src-tauri/src/pi_
 
 ### b. Persistent Storage & SQLite Schema
 
-Pipan stores application state and metadata in a SQLite database located at `<app_local_data_dir>/pipan.db`.
+PiPan stores application state and metadata in a SQLite database located at `<app_local_data_dir>/pipan.db`.
 
 - **Database Connection**: `src-tauri/src/db.rs` opens SQLite in Write-Ahead Logging (`WAL`) mode with foreign key constraints enabled. It lives behind a thread-safe `Mutex<Connection>` in Tauri managed state.
-- **Database Migrations**: Pipan tracks database versioning using `PRAGMA user_version`. Each migration runs once inside a transaction at startup:
+- **Database Migrations**: PiPan tracks database versioning using `PRAGMA user_version`. Each migration runs once inside a transaction at startup:
   - **v1 (Graph Persistence)**:
     - `sessions`: Stores `id` (primary key), `graph_direction` (`'TB'` or `'LR'`), `created_at`, `updated_at`.
     - `node_positions`: Stores `session_id` (foreign key with cascade delete), `direction`, `node_id`, `x`, `y`, `pinned`.
@@ -96,7 +96,7 @@ Pipan stores application state and metadata in a SQLite database located at `<ap
 - **Session Data vs. Transcript Files**:
   - `pipan.db` stores session metadata, graph layouts, PR views, and usage metrics.
   - Pi CLI stores raw message conversations, run states, and tool execution logs directly in its `.jsonl` transcript file (`session_file_path`).
-  - Pipan indexes message counts, tool call counts, and token usage into SQLite so search, filtering, grouping, and sorting happen directly in SQL without parsing transcripts on every query.
+  - PiPan indexes message counts, tool call counts, and token usage into SQLite so search, filtering, grouping, and sorting happen directly in SQL without parsing transcripts on every query.
 - **Repository Layer (`src-tauri/src/storage.rs`)**:
   - Provides CRUD operations: `list_saved_sessions`, `save_session_metadata`, `rename_session`, `archive_session`, `delete_session`.
   - Runs database queries on Tokio's blocking threadpool (`spawn_blocking`) to keep the async executor responsive.
@@ -170,7 +170,7 @@ The Svelte 5 frontend communicates with the Rust core via typed IPC wrappers.
 
 ### d. Extension & Plugin System
 
-Pipan uses a VS Code-style extension model defined in `src-tauri/src/extensions.rs` and `src/lib/extensions/registry.svelte.ts`.
+PiPan uses a VS Code-style extension model defined in `src-tauri/src/extensions.rs` and `src/lib/extensions/registry.svelte.ts`.
 
 - **Manifest Schema (`pipan-extension.json`)**:
   ```json
@@ -227,7 +227,7 @@ Pipan uses a VS Code-style extension model defined in `src-tauri/src/extensions.
   - `statusBarItems`: Indicators in the bottom status bar (left or right aligned).
   - `slashCommands`: Quick actions available in the chat prompt input.
 - **Built-in First-Party Extensions**:
-  Pipan repackages its primary subsystems as built-in extensions:
+  PiPan repackages its primary subsystems as built-in extensions:
   1. `pipan.node-graph`: Living DAG canvas and node inspection panel.
   2. `pipan.github-prs`: Pull request review panel, sidebar tab, and webhook monitor.
   3. `pipan.terminal`: Integrated PTY shell panel.

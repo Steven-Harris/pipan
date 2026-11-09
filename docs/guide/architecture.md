@@ -1,10 +1,10 @@
 # Architecture
 
-Learn how Pipan works under the hood.
+Learn how PiPan works under the hood.
 
 ## Overview {#overview}
 
-Pipan combines a Rust desktop runtime with a modern web interface. It runs `pi` as an external sidecar process.
+PiPan combines a Rust desktop runtime with a modern web interface. It runs `pi` as an external sidecar process.
 
 The system has three main layers:
 
@@ -14,7 +14,7 @@ The system has three main layers:
 
 ```
 +------------------------------------------------------+
-|                     Pipan UI                         |
+|                     PiPan UI                         |
 |     (Svelte 5 Runes + SvelteKit + Tailwind CSS)     |
 +--------------------------+---------------------------+
                            | IPC Commands & Events
@@ -32,7 +32,7 @@ The system has three main layers:
 
 ## Tauri & Rust Core {#tauri-and-rust-core}
 
-Tauri v2 gives Pipan native speed and small memory use.
+Tauri v2 gives PiPan native speed and small memory use.
 
 The Rust backend handles critical tasks:
 
@@ -43,11 +43,11 @@ The Rust backend handles critical tasks:
 
 ## Pi RPC Sidecar {#pi-rpc-sidecar}
 
-Pipan does not run `pi` inside a virtual terminal. It starts `pi` with `--mode rpc`.
+PiPan does not run `pi` inside a virtual terminal. It starts `pi` with `--mode rpc`.
 
 ### Communication Protocol
 
-- **Input (`stdin`)**: Pipan sends JSON commands as single lines.
+- **Input (`stdin`)**: PiPan sends JSON commands as single lines.
 - **Output (`stdout`)**: `pi` writes JSON responses and streaming events as newline-delimited JSON (JSONL).
 - **Diagnostics (`stderr`)**: Raw logs stream into a collapsible diagnostics drawer.
 
@@ -70,11 +70,11 @@ You can guide `pi` while it generates tokens:
 
 ## SQLite Persistence {#sqlite-persistence}
 
-Pipan stores application metadata in a local SQLite file (`pipan.db`).
+PiPan stores application metadata in a local SQLite file (`pipan.db`).
 
 ### Key Design Points
 
-- **Safe Concurrency**: Pipan uses Write-Ahead Logging (`PRAGMA journal_mode = WAL`) and foreign key validation (`PRAGMA foreign_keys = ON`).
+- **Safe Concurrency**: PiPan uses Write-Ahead Logging (`PRAGMA journal_mode = WAL`) and foreign key validation (`PRAGMA foreign_keys = ON`).
 - **Transcript Separation**: `pi` stores its own raw conversation logs in `.jsonl` files. SQLite stores metadata, search indexes, and layout positions.
 - **Fast Search**: Full queries run inside SQLite using SQL indexes. Search filters never slow down the frontend.
 

@@ -1,16 +1,16 @@
 # Features
 
-Explore the core features of Pipan.
+Explore the core features of PiPan.
 
 ## Split Workspace {#split-workspace}
 
-Pipan adapts to your workflow. It opens to a simple chat view by default. You can open auxiliary tools only when you need them.
+PiPan adapts to your workflow. It opens to a simple chat view by default. You can open auxiliary tools only when you need them.
 
 ### Layout Options
 
 - **Vertical Split**: Places the chat on the left and the active tool panel on the right. Best for widescreen monitors.
 - **Horizontal Split**: Places the active tool panel on top and the chat on the bottom. Best for compact displays.
-- **Draggable Splitter**: Drag the divider line to change panel sizes. Pipan remembers your split ratio.
+- **Draggable Splitter**: Drag the divider line to change panel sizes. PiPan remembers your split ratio.
 
 ### Auxiliary Panels
 
@@ -35,12 +35,12 @@ The Directed Acyclic Graph (DAG) canvas displays agent activity as an interactiv
 
 - **Top-to-Bottom (`TB`)**: Hierarchical tree layout flowing downward.
 - **Left-to-Right (`LR`)**: Horizontal timeline layout flowing left to right.
-- **Per-Session Coordinates**: Move any node with your mouse. Pipan saves your custom positions in SQLite.
+- **Per-Session Coordinates**: Move any node with your mouse. PiPan saves your custom positions in SQLite.
 - **Reset Layout**: Click to re-run auto-layout and snap nodes back into standard order.
 
 ## GitHub Integration {#github-integration}
 
-Pipan connects directly to GitHub through the native `gh` CLI. It does not need background polling loops or heavy MCP servers.
+PiPan connects directly to GitHub through the native `gh` CLI. It does not need background polling loops or heavy MCP servers.
 
 ### Pull Request Browser
 
@@ -60,7 +60,7 @@ Filter and inspect PRs with built-in views:
 
 ## Terminal & Explorer {#terminal-and-explorer}
 
-Work directly with your project files and system shell inside Pipan.
+Work directly with your project files and system shell inside PiPan.
 
 ### Workspace Terminal
 

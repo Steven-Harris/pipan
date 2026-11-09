@@ -89,7 +89,7 @@ pub struct ExtensionContributes {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct PipanExtensionManifest {
+pub struct PiPanExtensionManifest {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -110,7 +110,7 @@ pub struct PipanExtensionManifest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalExtensionBundle {
-    pub manifest: PipanExtensionManifest,
+    pub manifest: PiPanExtensionManifest,
     pub install_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_code: Option<String>,
@@ -181,7 +181,7 @@ pub fn validate_relative_entry_path(raw_entry: &str) -> Result<String, String> {
 }
 
 /// Validates and normalizes an extension manifest.
-pub fn validate_manifest(manifest: &mut PipanExtensionManifest) -> Result<(), String> {
+pub fn validate_manifest(manifest: &mut PiPanExtensionManifest) -> Result<(), String> {
     manifest.id = validate_extension_id(&manifest.id)?;
     manifest.name = manifest.name.trim().to_string();
     if manifest.name.is_empty() {
@@ -305,10 +305,10 @@ pub fn validate_manifest(manifest: &mut PipanExtensionManifest) -> Result<(), St
     Ok(())
 }
 
-/// Parses and validates a `PipanExtensionManifest` from a JSON string.
-pub fn parse_and_validate_manifest(raw_json: &str) -> Result<PipanExtensionManifest, String> {
+/// Parses and validates a `PiPanExtensionManifest` from a JSON string.
+pub fn parse_and_validate_manifest(raw_json: &str) -> Result<PiPanExtensionManifest, String> {
     let stripped = raw_json.trim_start_matches('\u{feff}');
-    let mut manifest: PipanExtensionManifest = serde_json::from_str(stripped)
+    let mut manifest: PiPanExtensionManifest = serde_json::from_str(stripped)
         .map_err(|e| format!("Invalid extension manifest JSON: {e}"))?;
     validate_manifest(&mut manifest)?;
     Ok(manifest)
@@ -541,7 +541,7 @@ pub fn install_extension_from_folder_into(
         .any(|reserved| reserved.eq_ignore_ascii_case(ext_id))
     {
         return Err(format!(
-            "Extension id `{ext_id}` is reserved for a built-in Pipan extension"
+            "Extension id `{ext_id}` is reserved for a built-in PiPan extension"
         ));
     }
 

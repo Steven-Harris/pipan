@@ -160,7 +160,7 @@
       <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600/20 border border-indigo-500/30 text-indigo-300">
         <Workflow class="h-3.5 w-3.5" />
       </div>
-      <span class="font-semibold tracking-tight text-zinc-100 text-sm">Pipan</span>
+      <span class="font-semibold tracking-tight text-zinc-100 text-sm">PiPan</span>
     </div>
 
     <!-- Status Badge -->

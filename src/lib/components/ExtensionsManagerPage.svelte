@@ -75,7 +75,7 @@
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Select Pipan Extension Folder (containing pipan-extension.json)'
+        title: 'Select PiPan Extension Folder (containing pipan-extension.json)'
       });
       if (typeof selected === 'string' && selected.trim()) {
         folderPathInput = selected;
