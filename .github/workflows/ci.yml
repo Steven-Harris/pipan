@@ -9,6 +9,7 @@ on:
       - '**.md'
       - '.vscode/**'
       - 'LICENSE*'
+      - 'docs/**'
   workflow_dispatch:
 
 concurrency:

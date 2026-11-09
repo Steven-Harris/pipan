@@ -1,144 +1,134 @@
 # Pipan
 
-**Pipan** is a native desktop GUI and orchestration workspace for the [`pi`](https://github.com/badlogic/pi-mono) AI coding agent, built with **Tauri v2** and **Svelte 5**.
+A native desktop application to run, inspect, and steer Pi AI coding agents.
 
-Instead of wrapping a pseudo-terminal, Pipan spawns `pi` as a structured JSON-RPC sidecar process (`pi --mode rpc --no-session`), turning the CLI agent into an inspectable, steerable desktop environment with real-time reasoning traces, tool-call telemetry, workspace isolation, and mid-flight human intervention.
-
----
-
-## Quick Start
-
-1. **Install the `pi` CLI** and make sure it is available on your system `PATH`:
-   ```bash
-   pi --version
-   ```
-2. **Download Pipan:** Go to the [**Releases**](https://github.com/Steven-Harris/pipan/releases) tab and download the latest installer or bundle for your platform:
-   - **Windows (x64):** `.msi` or `.exe` (NSIS) installer
-   - **macOS (Apple Silicon & Intel):** `.dmg` disk image
-   - **Linux (x64):** `.deb`, `.rpm`, or `.AppImage`
-3. **Launch & Connect:** Open **Pipan** and choose a session mode in the header:
-   - Click **Start Headless** to launch an isolated scratchpad session (`<temp_dir>/pipan-headless`), or
-   - Click **Open Folder…** to bind `pi` to a local project directory.
+[![CI](https://github.com/Steven-Harris/pipan/actions/workflows/ci.yml/badge.svg)](https://github.com/Steven-Harris/pipan/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](package.json)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://v2.tauri.app/)
 
 ---
 
-## Features
+## What is Pipan?
 
-### Implemented
-- **JSON-RPC Sidecar Supervisor (`src-tauri/src/pi_rpc.rs`)**
-  - Spawns and manages a `pi --mode rpc --no-session` child process over async `stdin`/`stdout` pipes using `tokio`.
-  - Generation-safe process lifecycle cleanup, newline-delimited JSONL event parsing (`pi:event`), live `stderr` streaming (`pi:stderr`), and connection state broadcasts (`pi:status`).
-- **Flexible Session Modes**
-  - **Headless Sandbox:** Spawns `pi` inside an isolated temporary directory (`<temp_dir>/pipan-headless`) for safe scratchpad exploration.
-  - **Directory Workspace:** Binds `pi` to any local repository or project folder via the native OS folder picker.
-- **Transparent Agent Telemetry**
-  - Live streaming assistant responses with auto-scroll and scroll-lock override.
-  - Collapsible **Thinking Blocks** (`ThinkingBlock.svelte`) to inspect reasoning traces in real time.
-  - Expandable **Tool Call Cards** (`ToolCallCard.svelte`) displaying tool arguments, execution state, elapsed duration, and results.
-  - Session header telemetry (`SessionHeader.svelte`) showing connection state, workspace path, active model, thinking level, token usage, and context compaction status.
-  - Collapsible **Pi Diagnostics** drawer for raw `stderr` output and runtime error banners.
-- **Mid-Flight Human Steering (`ChatInput.svelte`)**
-  - Context-aware composer that switches from **Send** when idle to live **Steer**, **Follow-up**, and **Stop** controls while `pi` is working.
-  - Visual queue pills for pending `steer` and `followUp` messages, plus immediate turn cancellation (`clear_queue` + `abort`).
+Pipan is a desktop application to run, inspect, and steer `pi` coding agents. It wraps the `pi` CLI in a visual workspace built with Tauri v2, Svelte 5, and Rust.
 
-### Roadmap (`plan/`)
-- **Per-Session Git Worktree Isolation:** Automatically create isolated `git worktree` sandboxes per agent session so the host working tree is never mutated directly without review.
-- **Direct GitHub CLI & Webhook Tunnel:** Execute synchronous `gh` CLI queries and stream real-time repository events via `gh webhook forward` into a local Rust HTTP listener—zero MCP server overhead and no REST polling rate limits.
-- **Living Orchestration Graph:** Visualize multi-agent workflows, tool calls, and subagents as a live directed acyclic graph (DAG) using `@xyflow/svelte` and `dagre`.
-- **Interactive Action Gating:** Intercept destructive operations in Rust and surface interactive **Approve / Modify** nodes before execution continues.
+Instead of running `pi` in a plain terminal, Pipan communicates with `pi` using JSON-RPC over `stdin` and `stdout`. This lets you follow model reasoning steps, monitor tool calls, track token costs, steer tasks in real time, and view your workflow as an interactive node graph.
 
 ---
 
-## Tech Stack
+## Key Features
 
-- **Desktop Shell & Backend:** [Tauri v2](https://v2.tauri.app/), Rust (2024 edition), `tokio`, `serde`, `serde_json`
-- **Frontend:** [Svelte 5](https://svelte.dev/) (Runes), SvelteKit (`@sveltejs/adapter-static`), TypeScript, Vite
-- **Styling & Icons:** Tailwind CSS v4 (`@tailwindcss/vite`), `lucide-svelte`
-- **Agent Runtime:** `pi` CLI (`--mode rpc --no-session`)
-
----
-
-## Development (Build from Source)
-
-### Prerequisites
-
-1. **pi CLI** installed and accessible on your system `PATH`:
-   ```bash
-   pi --version
-   ```
-2. **Node.js** and **pnpm** (`pnpm@10.x` recommended)
-3. **Rust toolchain** (`rustup`, `cargo`) and [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your OS
-
-### 1. Install dependencies
-
-```bash
-pnpm install
-```
-
-### 2. Run in development mode
-
-Launch the Vite dev server (`http://localhost:1420`) and the native Tauri desktop window with hot reload:
-
-```bash
-pnpm tauri dev
-```
-
-### 3. Type-check & validate
-
-Run SvelteKit sync and `svelte-check`:
-
-```bash
-pnpm check
-```
-
-Check the Rust backend:
-
-```bash
-cargo check --manifest-path src-tauri/Cargo.toml
-```
-
-### 4. Build for production
-
-Compile the static frontend and bundle the native desktop installer for your platform:
-
-```bash
-pnpm tauri build
-```
+- **Rust Sidecar & RPC Manager:** Controls `pi` as a background child process (`pi --mode rpc --no-session`). Parses JSONL events, streams `stderr` diagnostics, and handles session lifecycles.
+- **Split-Panel Workspace:** Organize your workspace with panels for Chat, DAG Canvas, File Explorer, Terminal, and GitHub Pull Requests.
+- **Living DAG Canvas:** Visualizes agent turns, tool calls, and approval steps as a node graph using `@xyflow/svelte`. Saves node coordinates for each session.
+- **Persistent SQLite Storage:** Stores sessions, messages, turns, tool calls, and graph states in `pipan.db`. Includes search, grouping, filtering, archiving, and deletion.
+- **Mid-Flight Steering:** Send follow-up instructions, steer running tasks, or abort turns immediately with dedicated controls.
+- **Deep GitHub Integration:** Uses the `gh` CLI and local webhook forwarding to track pull requests, reviews, and CI checks without MCP servers.
+- **Embedded Terminal & File Explorer:** Open a native pseudo-terminal or browse project files directly inside the workspace.
+- **Cost & Usage Analytics:** Scans session transcripts to track token counts and estimated costs across days, weeks, months, and years. Displays telemetry in the bottom status bar.
+- **In-App Doctor:** Scans your system for `pi`, `gh`, `git`, Node.js, and compiler toolchains. Provides fix commands for missing tools or auth errors.
+- **Extension System:** Load custom workspace extensions that contribute panels, custom views, status bar items, and slash commands.
 
 ---
 
-## Project Structure
+## Architecture at a Glance
 
 ```text
-pipan/
-├── src/
-│   ├── lib/
-│   │   ├── components/
-│   │   │   ├── ChatInput.svelte      # Prompt composer + live Steer / Follow-up / Stop controls
-│   │   │   ├── MessageItem.svelte    # User & assistant message renderer
-│   │   │   ├── MessageList.svelte    # Auto-scrolling transcript & starter prompts
-│   │   │   ├── SessionHeader.svelte  # Status badge, model pill, workspace & session actions
-│   │   │   ├── ThinkingBlock.svelte  # Collapsible reasoning trace accordion
-│   │   │   └── ToolCallCard.svelte   # Live tool execution inspector
-│   │   ├── stores/
-│   │   │   └── chat.svelte.ts        # Reactive Svelte 5 runes store & Tauri IPC bridge
-│   │   └── types/
-│   │       └── pi.ts                 # TypeScript definitions for Pi RPC commands & events
-│   └── routes/
-│       └── +page.svelte              # Main application layout & diagnostics drawer
-├── src-tauri/
-│   ├── src/
-│   │   ├── lib.rs                    # Tauri builder & IPC command registration
-│   │   ├── github.rs                 # gh CLI commands returning JSON (PRs, checks, issues, runs)
-│   │   ├── main.rs                   # Binary entrypoint
-│   │   ├── pi_rpc.rs                 # Async Pi sidecar manager (stdin/stdout JSONL + stderr)
-│   │   └── webhook.rs                # gh webhook forward tunnel + local axum receiver
-│   ├── Cargo.toml
-│   └── tauri.conf.json
-├── plan/                             # Multi-phase architecture roadmap
-├── PRODUCT.md                        # Product specification & capabilities overview
-└── package.json
+┌────────────────────────────────────────────────────────┐
+│             Frontend (Svelte 5 + Runes)                │
+│   Chat • DAG Graph • Panels • Cost Dashboard • Doctor  │
+└──────────────────────────┬─────────────────────────────┘
+                           │ Tauri IPC (Commands & Events)
+┌──────────────────────────▼─────────────────────────────┐
+│                 Tauri v2 Host (Rust)                   │
+│  SQLite (pipan.db) • Terminal PTY • Extension Loader   │
+└────────────┬─────────────────────────────┬─────────────┘
+             │ JSON-RPC (stdin/stdout)     │ Direct CLI execution
+┌────────────▼─────────────┐ ┌─────────────▼─────────────┐
+│   pi CLI Sidecar Process │ │    git & gh CLI Tools     │
+└──────────────────────────┘ └───────────────────────────┘
 ```
+
+- **Desktop Shell:** Tauri v2 with Rust.
+- **Frontend:** Svelte 5 (Runes), SvelteKit static adapter, Tailwind CSS v4, and `@xyflow/svelte`.
+- **Sidecar Manager:** Spawns `pi --mode rpc --no-session` via `tokio` async pipes and parses JSONL streams.
+- **Persistence:** Local SQLite database (`pipan.db`) running in WAL mode.
+- **Integrations:** Direct host execution of `git` and `gh` CLI commands, plus a local HTTP webhook listener.
+
+---
+
+## Prerequisites
+
+Install these tools before running Pipan:
+
+1. **[pi CLI](https://github.com/badlogic/pi-mono):** Install and verify it is available on your `PATH`:
+   ```bash
+   pi --version
+   ```
+2. **Git:** Required for workspace isolation and repository tracking:
+   ```bash
+   git --version
+   ```
+3. **[GitHub CLI (`gh`)](https://cli.github.com/):** Required for pull requests and webhook forwarding:
+   ```bash
+   gh auth status
+   ```
+4. **Node.js & pnpm:** Node.js 20+ and pnpm 10+:
+   ```bash
+   node --version
+   pnpm --version
+   ```
+5. **Rust toolchain:** Cargo and `rustc` (2024 edition supported):
+   ```bash
+   cargo --version
+   ```
+   Follow the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/) for your operating system.
+
+---
+
+## Getting Started
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Steven-Harris/pipan.git
+   cd pipan
+   ```
+
+2. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+
+3. Run in development mode:
+   ```bash
+   pnpm tauri dev
+   ```
+
+This command starts the Vite dev server and opens the native Tauri desktop window with hot module reloading.
+
+---
+
+## Development Commands
+
+- **Type-check frontend:**
+  ```bash
+  pnpm check
+  ```
+
+- **Run Rust tests:**
+  ```bash
+  cargo test --manifest-path src-tauri/Cargo.toml
+  ```
+
+- **Check Rust code:**
+  ```bash
+  cargo check --manifest-path src-tauri/Cargo.toml
+  ```
+
+- **Build production bundle:**
+  ```bash
+  pnpm tauri build
+  ```
 
 ---
 
