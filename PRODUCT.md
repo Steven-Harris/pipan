@@ -4,50 +4,58 @@
 
 ## Platform
 
-web
+desktop app (Tauri v2 + Svelte 5 + Rust)
 
 ## Users
 
-Software engineers and AI-assisted developers (inferred from `plan/` and codebase) who run and supervise `pi` coding agent sessions against local repositories and GitHub pull requests, needing real-time telemetry, live steering, and strict workspace isolation without mutating their working tree directly.
+Software engineers and AI-assisted developers who run and supervise `pi` coding agent sessions against local repositories and GitHub pull requests. They need real-time telemetry, live steering, and workspace isolation without mutating their primary working tree directly.
 
 ## Product Purpose
 
-`pipan` is a desktop GUI wrapper and orchestration workspace for the `pi` AI coding agent built with Tauri and Svelte 5. It turns the `pi` CLI into an inspectable, steerable desktop environment—currently providing live streaming chat, reasoning inspection, tool-call execution cards, mid-flight steering/follow-up queues, and stderr diagnostics, with planned expansion (`plan/`) into a living DAG orchestration canvas and GitHub PR/webhook integration.
+Pipan is a native desktop application running via Tauri v2 to run, inspect, and steer the `pi` AI coding agent. Pipan turns the `pi` CLI into an interactive desktop workspace. It provides live streaming chat, model reasoning inspection, tool-call cards, a living DAG node graph, GitHub pull request workflows, an embedded terminal, a native file explorer, cost analytics, and an in-app dependency Doctor.
 
-Success means developers can launch isolated or directory-bound `pi` sessions, see every thought, tool invocation, and subagent branch in real time, and intervene (steer, queue follow-ups, abort, or approve gated actions) without losing context or risking unapproved host-repo mutations.
+Success means developers can launch isolated or directory-bound `pi` sessions, watch every thought, tool invocation, and subagent step in real time, and intervene (steer, queue follow-ups, abort, or approve gated actions) without losing context or risking unapproved host repository mutations.
 
 ## Positioning
 
-Unlike terminal-only CLI harnesses or opaque chat wrappers, `pipan` pairs direct `pi --mode rpc` sidecar process control with isolated workspace execution (headless temp sandboxes today; per-session Git worktrees planned) and direct `gh` CLI / webhook event streams—avoiding MCP server overhead and REST polling rate limits while exposing structured agent telemetry and mid-turn steering controls.
+Pipan is a native desktop application running via Tauri v2. Unlike terminal-only CLI harnesses or opaque chat wrappers, Pipan pairs direct `pi --mode rpc` sidecar process control with isolated workspace execution (headless temp directories or Git worktrees) and direct `gh` CLI and local webhook event streams. This approach eliminates MCP server overhead and REST polling limits while exposing structured telemetry and human steering controls.
 
 ## Operating Context
 
-- Runs as a native desktop window via Tauri v2 (`800x600` default window, local webview at `http://localhost:1420` in dev) alongside the developer's IDE, terminal, and Git repositories.
-- Operates in two session modes today:
-  - **Headless (Isolated Temp):** Spawns `pi` inside `<temp_dir>/pipan-headless` for safe, scratchpad exploration.
-  - **Directory Workspace:** Spawns `pi` bound to a user-selected local project folder via native OS file dialog.
-- Expects `pi` CLI installed on the host `PATH` (invoked with `--mode rpc --no-session`) and, for planned GitHub workflows, `gh` CLI and `git` on the host machine.
+- Runs as a native desktop application via Tauri v2 alongside the developer's code editor, terminal, and Git repositories.
+- Operates in two session modes:
+  - **Headless Sandbox:** Spawns `pi` inside an isolated temporary directory for scratchpad tasks.
+  - **Directory Workspace:** Spawns `pi` inside a user-selected project folder or Git worktree.
+- Requires the `pi` CLI on the host `PATH` (invoked with `--mode rpc --no-session`).
+- Uses `git` and the `gh` CLI on the host machine for repository tracking, pull request workflows, and live webhook events.
 
 ## Capabilities and Constraints
 
 ### Confirmed Implemented Capabilities
-- **Rust Sidecar & RPC Manager (`src-tauri/src/pi_rpc.rs`):** Spawns and manages a single active `pi --mode rpc --no-session` child process with generation-safe lifecycle cleanup, newline-delimited JSONL stdout parsing (`pi:event`), live stderr streaming (`pi:stderr`), and connection state broadcasts (`pi:status`).
-- **Reactive Telemetry Store (`src/lib/stores/chat.svelte.ts`):** Reconstructs streaming text deltas, collapsible reasoning/thinking blocks, live tool call argument/execution progress and durations, token usage, compaction status, and active `steer` / `followUp` message queues.
-- **Session & Steering UI (`src/lib/components/`):**
-  - `SessionHeader.svelte`: Connection status badge (`Disconnected`, `Starting…`, `Ready`, `Thinking / Streaming`, `Error`), workspace indicator, active model + thinking-level pill, and session lifecycle actions (`Start Headless`, `Open Folder…`, `New Chat`, `Disconnect`).
-  - `MessageList.svelte` & `MessageItem.svelte`: Auto-scrolling transcript with scroll-lock override ("Jump to bottom"), disconnected onboarding state, connected quick-starter prompts, `ThinkingBlock` accordions, and `ToolCallCard` inspectors.
-  - `ChatInput.svelte`: Context-aware composer that switches from `Send` when idle to live `Steer`, `Follow-up`, and `Stop` (`clear_queue` + `abort`) controls while the agent is running, with visual queue pills above the input.
-  - Collapsible `Pi Diagnostics` stderr drawer and dismissible error banner in `src/routes/+page.svelte`.
+- **Rust Sidecar & RPC Manager (`src-tauri/src/pi_rpc.rs`):** Spawns and supervises active `pi --mode rpc --no-session` child processes. Parses JSONL events from `stdout`, streams live `stderr` diagnostics, and broadcasts connection states.
+- **Split-Panel Workspace Layout (`src/lib/components/WorkspaceLayout.svelte`):** Provides a flexible desktop layout with dedicated panels for Chat, DAG canvas, File Explorer, Terminal, and GitHub Pull Requests.
+- **Living DAG Node Graph (`src/lib/components/FlowCanvas.svelte`):** Visualizes agent sessions, turns, tool calls, and approval steps as an interactive node graph using `@xyflow/svelte`. Persists node layout and coordinates across sessions.
+- **Persistent SQLite Session Management (`src-tauri/src/db.rs`):** Stores sessions, messages, turns, tool calls, and graph node coordinates in a local SQLite database (`pipan.db`). Supports full-text search, grouping, filtering, archiving, and deletion.
+- **Deep GitHub Integration (`src-tauri/src/github.rs`, `src-tauri/src/webhook.rs`):** Executes `gh` CLI commands directly for pull requests, checks, issues, and workflow runs. Forwards repository webhooks locally without MCP servers or polling loops.
+- **Embedded Session Terminal and Native File Tree Explorer (`src-tauri/src/terminal.rs`, `src-tauri/src/fs_explorer.rs`):** Offers an in-app pseudo-terminal for direct shell execution and a native directory tree explorer with quick file viewing.
+- **Historical Cost & Usage Analytics Dashboard (`src-tauri/src/usage.rs`):** Indexes transcript JSONL files into SQLite to compute token counts and estimated costs across days, weeks, months, and years. Surfaces active telemetry in the bottom status bar.
+- **In-App Dependency Doctor (`src-tauri/src/doctor.rs`):** Audits required host tools (`pi`, `gh`, `git`, Node.js, and toolchains). Highlights missing tools or invalid authentication and provides auto-remediation scripts.
+- **VS Code-Style Extension and Plugin Host System (`src-tauri/src/extensions.rs`):** Loads workspace extensions from local manifests. Supports custom panels, views, status bar items, and slash commands.
+- **Reactive Telemetry & Steering UI (`src/lib/stores/chat.svelte.ts`, `src/lib/components/ChatInput.svelte`):** Displays streaming tokens, collapsible reasoning blocks, and expandable tool execution cards. Provides live `Steer`, queued `Follow-up`, and immediate `Stop` (`abort`) controls.
+- **Action Approval System (`src-tauri/src/approval.rs`):** Intercepts sensitive actions and surfaces approval requests for user review and resolution before execution.
 
-### Architectural Constraints (`plan/` & Codebase)
-- **Strict JSON RPC Communication:** Communicate with `pi` exclusively as a sidecar process over JSON RPC (`stdin`/`stdout`), never by scraping a pseudo-terminal.
-- **No MCP Servers for GitHub:** All planned GitHub integration must execute directly via `gh` CLI and local webhook forwarding (`gh webhook forward`), never via MCP servers or REST polling loops.
-- **Workspace Isolation:** Planned multi-session architecture requires every agent session to run inside an isolated `git worktree` so the host repository is never mutated directly without review.
-- **Tech Stack:** Tauri v2 (Rust, `tokio`, `serde_json`), Svelte 5 (Runes, SvelteKit static adapter), Tailwind CSS v4, TypeScript, and `lucide-svelte` (with `@xyflow/svelte` and `dagre` planned in `plan/` for Phase 4).
+### Architectural Constraints
+- **Strict JSON-RPC Communication:** Pipan communicates with `pi` exclusively as a sidecar process over JSON-RPC (`stdin`/`stdout`), never by scraping terminal output.
+- **Direct CLI Primitives over Middleware:** All GitHub operations run directly through `gh` CLI commands and local webhook forwarding (`gh webhook forward`). Pipan avoids MCP servers and REST polling loops.
+- **Workspace Isolation:** Multi-session workflows isolate runs inside Git worktrees or temporary directories to protect the host checkout.
+- **Tech Stack:** Tauri v2 (Rust, `tokio`, `rusqlite`, `serde_json`), Svelte 5 (Runes, SvelteKit static adapter), Tailwind CSS v4, TypeScript, `@xyflow/svelte`, and `lucide-svelte`.
 
 ### Open / Undecided Product Decisions
-- **Primary Surface Hierarchy (Inferred / Pending Confirmation):** How the existing full-screen chat/steering transcript (`src/routes/+page.svelte`) will coexist with the planned Phase 4 Svelte Flow DAG canvas (`plan/` specifies a sidebar for history/PRs, main canvas for the Svelte Flow dashboard, and bottom drawer for chat/steering input).
-- **Destructive Action Interception Mechanism:** Exact RPC protocol hook or extension mechanism for pausing `pi` on destructive operations (`ApprovalNode` in Phase 5 of `plan/`).
+- Core v0.2 architectural decisions are settled:
+  - Surface hierarchy: Settled via the split-panel workspace layout hosting Chat, DAG Canvas, File Explorer, Terminal, and GitHub PR views.
+  - Action gating: Settled via native approval records and interactive approval dialogs.
+  - Persistence: Settled via SQLite (`pipan.db`) in WAL mode.
+  - Extension contracts: Settled via declarative manifests and contribution points.
 
 ## Brand Commitments
 
@@ -55,11 +63,10 @@ Unlike terminal-only CLI harnesses or opaque chat wrappers, `pipan` pairs direct
 
 ## Evidence on Hand
 
-- `plan/`: Five-phase architectural roadmap covering Tauri scaffolding, Pi RPC & Git worktrees, `gh` CLI & webhook tunnel, Svelte Flow living dashboard (`OrchestratorNode`, `WorkerNode`, `ActionNode`, `ApprovalNode`), and interactive steering/review.
-- `src-tauri/src/pi_rpc.rs` & `src-tauri/src/lib.rs`: Working Rust sidecar process manager and Tauri command handlers (`start_pi_session`, `stop_pi_session`, `send_pi_command`, `get_pi_status`).
-- `src/lib/stores/chat.svelte.ts` & `src/lib/types/pi.ts`: Complete client-side RPC protocol types and reactive state machine.
-- `src/routes/+page.svelte` & `src/lib/components/*.svelte`: Working dark-mode (`zinc-950` / `indigo` / `emerald` / `amber` / `rose`) chat and telemetry inspector UI.
-- **Absences:** No external marketing claims, customer testimonials, benchmark numbers, or custom vector logos beyond default Tauri app icons in `src-tauri/icons/` exist; future work must not fabricate them.
+- `src-tauri/`: Rust backend modules for sidecar RPC, SQLite storage, terminal PTY, file explorer, GitHub operations, webhook listener, cost analytics, extension system, dependency doctor, and approval flow.
+- `src/lib/`: Svelte 5 components, reactive runes stores, DAG canvas (`@xyflow/svelte`), split panels, and modal dialogs.
+- `plan/`: Architectural roadmap files covering workspace layout, node graph, persistence, GitHub integration, terminal, file explorer, cost tracking, doctor, and extensions.
+- `src-tauri/Cargo.toml` & `package.json`: Configured dependencies and verified build scripts for Tauri v2, Svelte 5, SQLite, and Tailwind CSS v4.
 
 ## Product Principles
 
