@@ -73,6 +73,13 @@ export default function (pi: Pi) {
 	pi.events.on("pipan:intent", (data) => {
 		if (data?.ch !== CH || !sessionCtx) return;
 		report(sessionCtx, { intent: { name: data.name, payload: data.payload } });
+		if (data.name === "graph.action" && data.payload?.actionId === "approve" && STEPS[graphIndex]?.kind === "approval") {
+			graphIndex += 1;
+			state("graph", "graph", graphAt(graphIndex));
+			run();
+		}
+		// Also write a log entry, so the intent is visible in PiPan without reading notifications.
+		pi.events.emit("pipan:log", { ch: CH, name: "intent-received", as: "entry", payload: { name: data.name, payload: data.payload } });
 	});
 
 	pi.registerCommand("demo-hello", {
@@ -106,8 +113,24 @@ export default function (pi: Pi) {
 		note: index < STEPS.length ? `Running ${STEPS[index].label}` : "Finished",
 	});
 
+	let graphIndex = 0;
+
+	/** Advances once a second. Stops at an approval step and waits for the user's Approve action. */
+	const run = () => {
+		if (timer) clearInterval(timer);
+		timer = setInterval(() => {
+			if (STEPS[graphIndex]?.kind === "approval") return; // waiting for the user
+			graphIndex += 1;
+			state("graph", "graph", graphAt(graphIndex));
+			if (graphIndex >= STEPS.length && timer) {
+				clearInterval(timer);
+				timer = undefined;
+			}
+		}, 1000);
+	};
+
 	pi.registerCommand("demo-graph", {
-		description: "Publish a graph and advance it on a timer (arg: clear)",
+		description: "Publish a graph that advances on a timer and waits at the approval step (arg: clear)",
 		handler: (args, ctx) => {
 			if (timer) clearInterval(timer);
 			timer = undefined;
@@ -116,16 +139,9 @@ export default function (pi: Pi) {
 				return report(ctx, { graph: "cleared" });
 			}
 			if (!supports("graph")) return report(ctx, { graph: "unsupported" });
-			let index = 0;
-			state("graph", "graph", graphAt(index));
-			timer = setInterval(() => {
-				index += 1;
-				state("graph", "graph", graphAt(index));
-				if (index >= STEPS.length && timer) {
-					clearInterval(timer);
-					timer = undefined;
-				}
-			}, 1000);
+			graphIndex = 0;
+			state("graph", "graph", graphAt(graphIndex));
+			run();
 			report(ctx, { graph: "started" });
 		},
 	});

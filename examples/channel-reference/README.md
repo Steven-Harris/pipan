@@ -7,7 +7,7 @@ Copy `producer.ts` to `~/.pi/agent/extensions/` (or `.pi/extensions/` in a proje
 | Command | What it does |
 |---|---|
 | `/demo-hello` | Handshake with the shim |
-| `/demo-graph [clear]` | Publish a graph that advances on a timer, or clear it |
+| `/demo-graph [clear]` | Publish a graph that advances on a timer and waits at the Approve step, or clear it |
 | `/demo-state-big <bytes>` | Publish a state of about N bytes, for chunking |
 | `/demo-form [pick\|checklist\|edit\|body]` | Ask a form question |
 | `/demo-review-diff [large]` | Ask for a diff review; `large` is 50 files of 1,000 lines |

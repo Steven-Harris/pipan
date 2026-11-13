@@ -161,6 +161,17 @@ All work happens locally on one branch, `feat/extension-channel`, created from `
 4. **Pending requests in a session the user is not viewing.** Recommended: the session list shows a badge, and the modal opens when the session is viewed. The producer is blocked meanwhile, so the badge must be visible.
 5. **Subagent processes** are out of scope for v1. Revisit when a producer needs them.
 
+## 6a. Follow-ups from the manual run
+
+Found while running the reference producer in `pnpm tauri dev`. Not started.
+
+1. **Graph panels open only from the picker.** After a producer publishes a graph, nothing visible happens until the user opens the panel from the "+" menu. Proposal: open a graph panel once per session and topic, the first time it is published. If the user closes it, it stays closed for that session. Changes spec section 8, which says panels are not opened automatically.
+2. **A waiting node with actions is easy to miss.** Proposal: when a node enters `waiting` and has actions, select it so its drawer opens, and show an attention dot on the panel tab while the panel is not in view.
+3. **The reference producer models approval as a graph action.** A decision the producer must wait for belongs in `pipan:request`, which opens the modal by itself and returns the answer directly. Proposal: `/demo-graph` awaits a `form` request at the Approve step and keeps the graph action as a second way to approve. The authoring guide should say that graph actions are for out-of-band controls such as pause or retry.
+4. **Nothing opens a modal from a graph node.** Keep it that way: a node that needs a decision is a request.
+5. **`notify` messages are not shown by PiPan.** The producer reports demo results through them, so they are invisible in the app. The producer now also writes an `intent-received` log entry, visible in the dev debug view. Decide whether PiPan should surface `notify` events, which is outside the channel work.
+6. **Project trust.** Pi skips `.pi/extensions` in an untrusted folder, and RPC mode cannot prompt, so a project-local producer silently does not load. The authoring guide should tell authors to use `~/.pi/agent/extensions/` or save trust with `/trust`.
+
 ## 7. Verification matrix
 
 | Layer | Tool |
