@@ -30,11 +30,6 @@ export interface RequestPayload {
   payload: unknown;
 }
 
-export interface ExpiryPayload {
-  requestId: string;
-  reason: string;
-}
-
 export interface IntentPayload {
   v: 1;
   ch: string;

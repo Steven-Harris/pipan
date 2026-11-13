@@ -19,7 +19,7 @@ Producers use `pi.events` only. Every call is a silent no-op when no shim is loa
 |---|---|---|
 | `pipan:hello` | `{ reply(info: HostInfo): void }` | producer to shim |
 | `pipan:state` | `{ ch, topic, primitive, payload \| null }` | producer to shim |
-| `pipan:request` | `{ ch, kind, payload, timeoutMs?, reply(answer \| undefined): void }` | producer to shim |
+| `pipan:request` | `{ ch, kind, payload, reply(answer \| undefined): void }` | producer to shim |
 | `pipan:log` | `{ ch, name, as: "entry" \| "message", payload, content?, options? }` | producer to shim |
 | `pipan:intent` | `{ ch, name, payload }` | shim to producer |
 | `pipan:resync` | `{ ch? }` | shim to producers (informational) |
@@ -52,7 +52,6 @@ interface Envelope<T> { v: 1; ch: string; seq?: number; payload: T }
 | Request | An `editor` dialog. `title = "pipan:r:<ch>:<kind>"`. `prefill` is the JSON of `Envelope<{ requestId, payload }>`. The reply `value` is the JSON of `Envelope<{ requestId, payload }>`. A `cancelled: true` reply means no answer. |
 | Log entry | `appendEntry("pipan:l:<ch>:<name>", payload)`. |
 | Log message | `sendMessage({ customType: "pipan:l:<ch>:<name>", ... })`. |
-| Request expiry | `setWidget("pipan:x:<requestId>", [json])` then cleared, where json is `Envelope<{ requestId, reason: "timeout" }>`. The `editor` dialog has no timeout over RPC, so the shim times the request out itself (default 30 minutes, or the producer's `timeoutMs`) and emits this so the host can close the surface. The host SHOULD still answer the outstanding Pi request id with `cancelled: true`; the shim ignores late answers. |
 | Intent | `prompt` with `/pipan-intent <json>` where json is `{ v: 1, ch, name, payload }`. The host checks `get_commands` for `pipan-intent` before sending. |
 | Shim announce | `setWidget("pipan:shim", [json of HostInfo])` on every `session_start` (idempotent; the event can fire more than once per session). The host reads this to learn that a shim is present. |
 
@@ -262,7 +261,7 @@ Rules:
 
 - State is stored per `(sessionId, ch, topic)`, last value wins, and survives panel close.
 - The first state seen for a graph topic adds an entry for it to the panel picker and opens its panel once per session and topic. A panel the user closes stays closed for that session, and the host opens at most 4 panels by itself per session; further topics stay in the picker. When a node enters `waiting` and has actions, the panel selects it, unless the user picked another node in the last few seconds, and a panel that is not in view shows a dot on its tab until it is looked at. A `request` opens its surface immediately and is queued behind any pending request for the same session.
-- The host cancels every pending request for a session when the session switches, stops, or the process exits. It sends `cancelled: true` for each outstanding Pi request id.
+- A request has no expiry. It waits until the user answers or cancels it, the session switches, or the process exits. Pi's abort does not cancel a pending request. The host cancels every pending request for a session when the session switches, stops, or the process exits. It sends `cancelled: true` for each outstanding Pi request id.
 - After a session switch or attach, the host sends `_shim.resync` and reloads the log with `get_entries`, using the last-seen entry id as `since`.
 - Payloads that fail validation are dropped. The host shows "Extension `<ch>` sent an invalid `<primitive>`" with details in the stderr log pane. For a request it answers `cancelled`.
 - The UI shows the channel id as "requested by `<ch>`" on every request surface.

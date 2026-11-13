@@ -1,6 +1,10 @@
 <script lang="ts">
   // Modal for the oldest pending request of a session. Closing it by any route other than an
   // answer (Esc, the Cancel button) cancels the request.
+  //
+  // `showModal()` makes the rest of the page inert, so nothing can switch the session, start a new
+  // chat or stop the process while a request is pending. That is why there is no confirm before
+  // those actions. A change that shows pending requests any other way must add one.
   import { onMount } from 'svelte';
   import type { FormAnswer, FormRequest, ReviewAnswer, ReviewRequest } from '#lib/channels/types.ts';
   import { channels, type PendingRequest } from '#lib/stores/channels.svelte.ts';

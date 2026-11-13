@@ -7,7 +7,6 @@ import { MAX_PAYLOAD_BYTES } from './limits';
 import {
   PROTOCOL_VERSION,
   type Envelope,
-  type ExpiryPayload,
   type HostInfo,
   type IntentPayload,
   type RequestPayload,
@@ -21,7 +20,6 @@ const fail = <T = never>(error: string): Decoded<T> => ({ ok: false, error });
 
 export const SHIM_WIDGET_KEY = 'pipan:shim';
 export const STATE_KEY_PREFIX = 'pipan:s:';
-export const EXPIRY_KEY_PREFIX = 'pipan:x:';
 export const REQUEST_TITLE_PREFIX = 'pipan:r:';
 export const LOG_TYPE_PREFIX = 'pipan:l:';
 export const INTENT_COMMAND = 'pipan-intent';
@@ -196,19 +194,6 @@ export function encodeRequestAnswer(ch: string, requestId: string, answer: unkno
     payload: { requestId, payload: answer }
   };
   return JSON.stringify(envelope);
-}
-
-export function decodeExpiry(key: string, lines: readonly string[] | undefined): Decoded<ExpiryPayload> {
-  if (!key.startsWith(EXPIRY_KEY_PREFIX)) return fail('not an expiry key');
-  if (!lines || lines.length === 0) return fail('expiry has no lines');
-  const envelope = decodeEnvelope(lines.join(''));
-  if (!envelope.ok) return envelope;
-  const payload = envelope.value.payload;
-  if (!isRecord(payload) || typeof payload.requestId !== 'string') return fail('expiry has no requestId');
-  return ok({
-    requestId: payload.requestId,
-    reason: typeof payload.reason === 'string' ? payload.reason : 'unknown'
-  });
 }
 
 // ---- Intents -------------------------------------------------------------------------------

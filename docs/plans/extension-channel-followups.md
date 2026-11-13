@@ -40,7 +40,7 @@ F2 (requiredFor) --------------------------> independent
 F3 (graph attention) ----------------------> independent
 F4 (messages in chat) ---------------------> independent
 F5 (dialog bridge) ------------------------> independent of F2 to F4 (reuses the form renderer and the request queue)
-F6 (request lifecycle) --------------------> after F5 (the guard covers bridged dialogs too)
+F6 (request expiry removal) ---------------> after F5
 F7 (type distribution) --------------------> after F1 and F2 (the schema must be final)
 F8 (docs sweep and manual run) -------------> last
 ```
@@ -135,22 +135,22 @@ Acceptance: a producer using `ctx.ui.select` and `ctx.ui.confirm` gets answers i
 
 Risks: dialogs can come in bursts from a misbehaving extension. Mitigation: the existing bounded queue and rate limit. Another risk is hiding a security-relevant confirm among others. Mitigation: bridged dialogs show their title and message in full and cannot be dismissed by clicking outside.
 
-### F6. Pending request lifecycle
+### F6. Request expiry removal
 
-Goal: a request waits for the user for as long as it takes, and the user does not lose it by clicking elsewhere.
+Goal: a request waits for the user for as long as it takes.
 
 Tasks:
 0. Remove request expiry. The shim no longer times requests out and no longer writes the `pipan:x:<requestId>` widget; `timeoutMs` is dropped from the producer request options. The host removes the expiry handling for that widget in `channels.svelte.ts` and `codec.ts`. A request now ends by an answer, Cancel or Esc, a session change, or the process exiting. Remove `/demo-timeout` from the reference producer, the harness and the integration test, and update spec sections 3 and 8, the guide, the authoring guide and the producer README. Keep a producer-side rule in the guide: a producer that cannot wait forever must race its own timer against the request and decide what to do, since PiPan will not cancel it.
 
-1. Guard. When the user starts a session switch, a new chat, or Stop Process (not Stop generation, which does not touch requests) while the pending queue is non-empty, show a confirm ("1 request is waiting. Switching cancels it.") with Switch and Stay. The existing cancel behavior stays for the confirmed case.
-2. Because the request modal is blocking, the guard only matters for a switch started by code (a keyboard shortcut or an extension intent). Check which entry points can run while a modal is open, and cover those.
+1. Switch guard: not built. A confirm before a session switch, a new chat or Stop Process would only matter if one of them could run while a request is pending. The request modal is a native `<dialog>` opened with `showModal()`, which makes the rest of the page inert, so no click or key reaches the session list, the new-chat button or the stop control. There are no global shortcuts or frontend menu handlers for them, plugins cannot switch sessions, and `+page.svelte` mounts `RequestHost` for the viewed session, which is the only session that can have a request. Dismissing the modal (Cancel, Esc) is the cancel. A guard would be code for an unreachable path.
+2. The assumption is written down in `RequestDialog.svelte`, because a test cannot check it (jsdom has no `showModal`). A later change that stops showing pending requests modally must revisit the guard.
 3. Update section 6 of the first plan and spec section 8 to say the unviewed-session badge is not needed because only the viewed session can have a pending request.
 
-Tests: a store test that a guarded switch leaves requests pending until confirmed; the harness no longer expects a timeout answer, and a request stays pending past the old 30 minute limit (use a fake clock in the store test).
+Tests: the harness no longer expects a timeout answer; a store test keeps a request pending for 24 hours of fake time; a store test shows that an old `pipan:x:` widget is not channel traffic.
 
-Acceptance: with a request pending, an attempted switch asks first, and Stay keeps the modal.
+Acceptance: a request stays pending past the old 30 minute limit, the shim and host no longer know the expiry widget, and the docs describe a request that waits.
 
-Risks: a forgotten ask blocks its producer until the user cancels or switches sessions. Mitigation: the request modal is always dismissible with Cancel and Esc, and the guide tells producers to treat `cancelled` as a normal answer. The guard may reduce to documentation if the modal makes every other entry point unreachable.
+Risks: a forgotten ask blocks its producer until the user cancels or switches sessions. Mitigation: the request modal is always dismissible with Cancel and Esc, and the guide tells producers to treat `cancelled` as a normal answer. 
 
 ### F7. Type distribution for third-party producers
 
@@ -209,7 +209,7 @@ Carried over from the first plan:
 | Graph auto-open and attention | vitest for the store logic, manual run for the panel and tab dot |
 | Custom messages and notifications | vitest for history and live paths, manual run |
 | Dialog bridge | vitest, a harness scenario without the shim, manual run |
-| Request lifecycle and switch guard | vitest with a fake clock, the harness, manual run |
+| Request expiry removal | vitest with a fake clock, the harness |
 | Schema | schema validation test against the reference producer |
 | Final | `pnpm check`, `pnpm test`, `pnpm test:channel`, `cargo test`, `cargo clippy`, `cargo fmt --check`, `pnpm docs:build` |
 

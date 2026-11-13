@@ -260,15 +260,18 @@ describe('requests', () => {
     expect(pendingFor()).toHaveLength(1);
   });
 
-  it('closes a request the shim reports as expired and cancels the Pi dialog', () => {
+  it('keeps a request pending for as long as it takes', () => {
     channels.handleEvent(S, requestEvent('form', 'r1', form));
-    const expiry = [JSON.stringify({ v: 1, ch: CH, payload: { requestId: 'r1', reason: 'timeout' } })];
-    channels.handleEvent(S, widget('pipan:x:r1', expiry));
-    expect(pendingFor()).toHaveLength(0);
-    expect(cancelledIds()).toEqual(['pi-1']);
-    // The shim clears the widget right after; that must be harmless.
-    channels.handleEvent(S, widget('pipan:x:r1', undefined));
-    expect(cancelledIds()).toEqual(['pi-1']);
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+    expect(pendingFor().map((r) => r.requestId)).toEqual(['r1']);
+    expect(sent.filter((c) => c.type === 'extension_ui_response')).toEqual([]);
+  });
+
+  it('does not treat an old expiry widget as channel traffic', () => {
+    channels.handleEvent(S, requestEvent('form', 'r1', form));
+    const lines = [JSON.stringify({ v: 1, ch: CH, payload: { requestId: 'r1', reason: 'timeout' } })];
+    expect(channels.handleEvent(S, widget('pipan:x:r1', lines))).toBe(false);
+    expect(pendingFor()).toHaveLength(1);
   });
 });
 

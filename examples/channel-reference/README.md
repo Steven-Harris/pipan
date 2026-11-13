@@ -13,7 +13,6 @@ Copy `producer.ts` to `~/.pi/agent/extensions/` (or `.pi/extensions/` in a proje
 | `/demo-review-diff [large]` | Ask for a diff review; `large` is 50 files of 1,000 lines |
 | `/demo-review-doc [multi]` | Ask for a document review; `multi` adds a second document and an earlier comment |
 | `/demo-unknown` | Send a request kind the host does not know |
-| `/demo-timeout <ms>` | Ask a question nobody answers, to see it time out |
 | `/demo-log [entry\|message]` | Write a log entry or message |
 | `/demo-dialog [select\|confirm\|input\|editor]` | Ask with a plain Pi dialog (no channel involved) |
 | `/demo-say` | Add one message that is shown in the chat and one that only the model sees |

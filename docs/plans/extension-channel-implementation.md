@@ -46,6 +46,8 @@ M2 graph        M3 request modal + form
 
 M2 and M3 are independent after M1 and can be built in either order. M4 and M5 need M3's modal shell.
 
+> Request expiry was removed after this plan was written: a request now waits until the user answers or cancels it, the session changes, or Pi exits. See [extension-channel-followups.md](./extension-channel-followups.md), F6.
+
 ## 4. Milestones
 
 ### M0. Shim, reference producer, harness
@@ -57,7 +59,7 @@ Tasks:
 2. `examples/channel-reference/producer.ts`: a standalone Pi extension using only `pi.events`. Commands: `/demo-graph` (publishes a graph and advances it on a timer), `/demo-form`, `/demo-review-diff`, `/demo-review-doc`, `/demo-log`. Synthetic data only, including a large diff fixture.
 3. `scripts/channel-harness.mjs`: spawns `pi --mode rpc --offline --no-session` with the shim and the producer, drives each command, and asserts on the emitted stream. This is the spike code, cleaned up. Package script `pnpm test:channel` (needs `pi` on PATH, so it is not part of `pnpm check`).
 
-Acceptance: the harness passes for hello, state replace and clear, chunked 3 MB state, request answered and cancelled, request timeout, resync re-emitting cached state, intent reaching the producer, and double `session_start`.
+Acceptance: the harness passes for hello, state replace and clear, chunked 3 MB state, request answered and cancelled, resync re-emitting cached state, intent reaching the producer, and double `session_start`.
 
 Risks: Pi API drift. Mitigation: the harness records the Pi version.
 
@@ -104,7 +106,7 @@ Tasks:
 2. `FormModal.svelte`: body (sanitized markdown, scrollable), fields (select, multiselect, text), actions, validation before an action without `skipValidation`.
 3. Unknown request kinds: shown as "unsupported request" with a cancel button, so a producer never hangs the UI.
 
-Acceptance: harness-driven form flows (pick one, checklist, multiline edit with prefill, body plus actions only) answer correctly; dismiss cancels; timeout from the shim closes the modal.
+Acceptance: harness-driven form flows (pick one, checklist, multiline edit with prefill, body plus actions only) answer correctly; dismiss cancels.
 
 ### M4. `review`: diff
 
@@ -158,7 +160,7 @@ All work happens locally on one branch, `feat/extension-channel`, created from `
 1. **Graph layout persistence (decided).** A new `channel_node_positions` table in migration v5, keyed by `(session_id, graph_id, node_id)` with `x`, `y`, `pinned`, and a cascade delete on `session_id`. The existing `node_positions` table is untouched.
 2. **Test runner.** Add vitest (M1), as a dev dependency only.
 3. **Markdown parser.** Check what the frontend already ships before choosing one for M3 and M5.
-4. **Pending requests in a session the user is not viewing.** Recommended: the session list shows a badge, and the modal opens when the session is viewed. The producer is blocked meanwhile, so the badge must be visible.
+4. **Pending requests in a session the user is not viewing.** Resolved: Pi runs one session at a time and a session switch cancels every pending request, so only the viewed session can have one. No badge is needed.
 5. **Subagent processes** are out of scope for v1. Revisit when a producer needs them.
 
 ## 6a. Follow-ups from the manual run

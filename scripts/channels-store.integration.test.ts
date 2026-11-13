@@ -258,15 +258,6 @@ describe.skipIf(!hasPi)('channels store against real Pi', () => {
     expect((await finished()).answer).toBeNull();
   });
 
-  it('a shim timeout closes the pending request', async () => {
-    const before = results().length;
-    await prompt('/demo-timeout 400');
-    await until(() => (channels.pending[SID] ?? []).length === 1, 'pending request');
-    await until(() => (channels.pending[SID] ?? []).length === 0, 'timeout closes the request');
-    await until(() => results().length > before, 'producer told of the timeout');
-    expect(results().at(-1).answer).toBeNull();
-  });
-
   it('loads log entries written by the producer', async () => {
     await prompt('/demo-log entry');
     await prompt('/demo-log message');

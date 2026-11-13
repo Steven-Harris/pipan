@@ -50,13 +50,11 @@ Publish on each status change. The host applies at most 10 updates per second. `
 
 ## 3. Ask a question
 
-`pipan:request` shows a modal and resolves `reply` with the answer, or with `undefined` when the user cancels, the request times out or the session ends. Always handle `undefined`.
+`pipan:request` shows a modal and resolves `reply` with the answer, or with `undefined` when the user cancels or the session ends. Always handle `undefined`.
 
 ```ts
-const request = (kind: string, payload: unknown, timeoutMs?: number) =>
-  new Promise<unknown>((resolve) =>
-    pi.events.emit("pipan:request", { ch: CH, kind, payload, timeoutMs, reply: resolve }),
-  );
+const request = (kind: string, payload: unknown) =>
+  new Promise<unknown>((resolve) => pi.events.emit("pipan:request", { ch: CH, kind, payload, reply: resolve }));
 
 const answer = await request("form", {
   title: "Deploy target",
@@ -79,7 +77,15 @@ Pi's own dialogs (`ctx.ui.select`, `confirm`, `input`, `editor`) need no shim an
 
 Validate the answer yourself. The host enforces required fields and `min`/`max`, but only the producer knows what is acceptable.
 
-Requests time out after 30 minutes by default. Pass `timeoutMs` to change that.
+A request has no expiry: it waits until the user answers or cancels, the session changes, or Pi exits. A producer that cannot wait forever races its own timer and decides what to do, because the host will not cancel the request for it:
+
+```ts
+const wait = (ms: number) => new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), ms));
+const answer = await Promise.race([request("form", payload), wait(10 * 60_000)]);
+if (answer === "timeout") { /* pause the run, leave the dialog open, or ask again later */ }
+```
+
+The dialog stays open after your timer fires, so treat a late answer as stale.
 
 ## 4. Review a diff or a document
 

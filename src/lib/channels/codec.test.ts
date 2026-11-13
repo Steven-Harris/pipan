@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   SeqTracker,
-  decodeExpiry,
   decodeRequest,
   decodeShimAnnounce,
   decodeState,
@@ -171,13 +170,6 @@ describe('requests', () => {
   it('encodes an answer the shim accepts', () => {
     const value = encodeRequestAnswer('acme.demo', 'r1', { action: 'go' });
     expect(JSON.parse(value)).toEqual({ v: 1, ch: 'acme.demo', payload: { requestId: 'r1', payload: { action: 'go' } } });
-  });
-
-  it('decodes expiry signals', () => {
-    const lines = [JSON.stringify({ v: 1, ch: 'acme.demo', payload: { requestId: 'r1', reason: 'timeout' } })];
-    expect(decodeExpiry('pipan:x:r1', lines)).toEqual({ ok: true, value: { requestId: 'r1', reason: 'timeout' } });
-    expect(decodeExpiry('pipan:x:r1', undefined).ok).toBe(false);
-    expect(decodeExpiry('other', lines).ok).toBe(false);
   });
 });
 

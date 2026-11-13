@@ -8,7 +8,6 @@
  *
  *   state   : setWidget("pipan:s:<ch>:<topic>", <envelope JSON in 64 KiB pieces>)
  *   request : editor(title "pipan:r:<ch>:<kind>", prefill <envelope JSON>)
- *   expiry  : setWidget("pipan:x:<requestId>", [<json>]) when a request times out
  *   log     : appendEntry / sendMessage with customType "pipan:l:<ch>:<name>"
  *   intent  : the hidden "/pipan-intent <json>" command
  *   announce: setWidget("pipan:shim", [<HostInfo json>]) on every session_start
@@ -18,7 +17,6 @@
 
 const PROTOCOL = 1;
 const CHUNK_SIZE = 64 * 1024;
-const DEFAULT_REQUEST_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** Highest version of each primitive the host renders. Advertised in the handshake. */
 const PRIMITIVES: Record<string, number> = { graph: 1, review: 1, form: 1 };
@@ -144,29 +142,17 @@ export default function (pi: Pi) {
 		}
 
 		const requestId = `r${++requestCounter}-${Math.random().toString(36).slice(2, 8)}`;
-		const timeoutMs =
-			typeof data.timeoutMs === "number" && data.timeoutMs > 0 ? data.timeoutMs : DEFAULT_REQUEST_TIMEOUT_MS;
 		let settled = false;
-		let timer: ReturnType<typeof setTimeout> | undefined;
 
+		// A request waits until the user answers or cancels it, or the session ends.
 		const settle = (answer?: unknown) => {
 			if (settled) return;
 			settled = true;
-			if (timer) clearTimeout(timer);
 			pending.delete(cancel);
 			reply(answer);
 		};
 		const cancel = () => settle(undefined);
 		pending.add(cancel);
-
-		timer = setTimeout(() => {
-			if (settled) return;
-			// The editor dialog has no timeout option over RPC, so tell the host the request expired.
-			const expiry = JSON.stringify({ v: PROTOCOL, ch, payload: { requestId, reason: "timeout" } });
-			active.ui.setWidget(`pipan:x:${requestId}`, [expiry]);
-			active.ui.setWidget(`pipan:x:${requestId}`, undefined);
-			settle(undefined);
-		}, timeoutMs);
 
 		const prefill = JSON.stringify({ v: PROTOCOL, ch, payload: { requestId, payload: data.payload } });
 		active.ui

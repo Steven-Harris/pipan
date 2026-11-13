@@ -145,7 +145,7 @@ Other observations:
 ## 9. Consequences for the design
 
 - Shim caches state per (channel, topic) and re-emits on `resync`. Required.
-- Pending-request cleanup belongs in PiPan (`pi_rpc.rs` or the chat store), keyed by session, plus a shim-side timeout.
+- Pending-request cleanup belongs in PiPan (`pi_rpc.rs` or the chat store), keyed by session. (A shim-side timeout was dropped later: requests do not expire.)
 - State and requests can carry large payloads, so lazy loading is an optimization, not a prerequisite for the first version.
 - Durable history uses `appendEntry` by default, so it stays out of the model's context. `sendMessage` is for content the model should see, and the shim exposes both. The host reloads history with `get_entries` and a `since` cursor.
 - State (section 3.2, item 1) is for the current picture of something. Log entries are for history. A producer republishes state on resync and does not rely on replaying the log to rebuild it.

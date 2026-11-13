@@ -11,12 +11,10 @@
  */
 
 import {
-  EXPIRY_KEY_PREFIX,
   REQUEST_TITLE_PREFIX,
   SHIM_WIDGET_KEY,
   STATE_KEY_PREFIX,
   SeqTracker,
-  decodeExpiry,
   decodeRequest,
   decodeShimAnnounce,
   decodeState,
@@ -212,10 +210,6 @@ class ChannelsStore {
       }
       if (key.startsWith(STATE_KEY_PREFIX)) {
         this.onState(sessionId, key, lines);
-        return true;
-      }
-      if (key.startsWith(EXPIRY_KEY_PREFIX)) {
-        this.onExpiry(sessionId, key, lines);
         return true;
       }
       return false;
@@ -435,18 +429,6 @@ class ChannelsStore {
         }
       ]
     };
-  }
-
-  private onExpiry(sessionId: string, key: string, lines: string[] | undefined): void {
-    if (!lines) return; // The shim clears the widget right after setting it.
-    const expiry = decodeExpiry(key, lines);
-    if (!expiry.ok) return;
-    const queue = this.pending[sessionId] ?? [];
-    const expired = queue.find((r) => r.requestId === expiry.value.requestId);
-    if (!expired) return;
-    this.removePending(sessionId, expired.requestId);
-    // The shim already gave up, but Pi still tracks the dialog until it gets a response.
-    this.cancelPiRequest(expired.piRequestId);
   }
 
   private handleResponse(event: ChannelPiEvent): boolean {

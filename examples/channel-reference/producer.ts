@@ -7,7 +7,7 @@
  * synthetic. Wire format: docs/plans/extension-channel-spec.md.
  *
  * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|answer|body],
- * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-timeout <ms>, /demo-say, /demo-notify [info|warning|error], /demo-dialog [select|confirm|input|editor].
+ * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-say, /demo-notify [info|warning|error], /demo-dialog [select|confirm|input|editor].
  * Each command reports its outcome through a notification that starts with "demo-result:".
  */
 
@@ -56,8 +56,8 @@ export default function (pi: Pi) {
 	const state = (topic: string, primitive: string, payload: unknown) =>
 		pi.events.emit("pipan:state", { ch: CH, topic, primitive, payload });
 
-	const request = (kind: string, payload: unknown, timeoutMs?: number) =>
-		new Promise<unknown>((resolve) => pi.events.emit("pipan:request", { ch: CH, kind, payload, timeoutMs, reply: resolve }));
+	const request = (kind: string, payload: unknown) =>
+		new Promise<unknown>((resolve) => pi.events.emit("pipan:request", { ch: CH, kind, payload, reply: resolve }));
 
 	const report = (ctx: Ctx, result: unknown) => ctx.ui.notify(`demo-result:${JSON.stringify(result)}`, "info");
 
@@ -276,15 +276,6 @@ export default function (pi: Pi) {
 			const shape = FORMS[args.trim() || "pick"] ?? FORMS.pick;
 			const answer = await request("form", shape);
 			report(ctx, { answer: answer ?? null });
-		},
-	});
-
-	pi.registerCommand("demo-timeout", {
-		description: "Ask a form question that nobody answers (arg: timeout in ms)",
-		handler: async (args, ctx) => {
-			const timeoutMs = Number(args) || 500;
-			const answer = await request("form", { title: "Unanswered", actions: [{ id: "ok", label: "OK" }] }, timeoutMs);
-			report(ctx, { answer: answer ?? null, timeoutMs });
 		},
 	});
 

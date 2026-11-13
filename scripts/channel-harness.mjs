@@ -204,23 +204,6 @@ test("request: a reply with a wrong requestId is treated as cancelled", async ()
 	eq(r.answer, null, "mismatched requestId");
 });
 
-test("request: shim timeout resolves the producer and signals expiry", async () => {
-	let timedOut;
-	responder = (event) => {
-		timedOut = event; // never answered; the shim must give up on its own
-	};
-	const { results: [r] } = await runCommand("/demo-timeout 300");
-	eq(r.answer, null, "timed out request resolves with no answer");
-	const requestId = JSON.parse(timedOut.prefill).payload.requestId;
-	const expiry = await waitFor(() => widgets(`pipan:x:${requestId}`).find((w) => w.widgetLines), "expiry signal");
-	eq(JSON.parse(expiry.widgetLines[0]).payload, { requestId, reason: "timeout" }, "expiry payload");
-	// A late cancel from the host (which cannot know about the timeout) must be harmless.
-	send({ type: "extension_ui_response", id: timedOut.id, cancelled: true });
-	responder = answerWith(() => ({ action: "go", values: {} }));
-	const { results: [again] } = await runCommand("/demo-form");
-	eq(again.answer, { action: "go", values: {} }, "shim still serves requests after a timeout");
-});
-
 test("resync: re-emits cached state and announces", async () => {
 	responder = () => {};
 	const key = `pipan:s:${CH}:big`;
