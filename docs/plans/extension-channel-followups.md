@@ -104,7 +104,7 @@ Goal: what an extension says is visible in PiPan, and survives a reload.
 Tasks:
 1. Custom messages. Draw `role: "custom"` messages with `display: true` in the transcript, live (`message_end`) and in the history rebuild (`hydrateFromRawMessages`). Show the text as a distinct system card with the extension's `customType` as a small label, rendered with the existing sanitized markdown. Messages with `display: false` stay hidden. Channel log messages (`pipan:l:...`) stay out of the chat unless a plugin renderer exists, as now.
 2. Plugin override. A plugin's `messageRenderers` entry still wins for its own channel's log messages. The new card is the fallback for any other custom message.
-3. Notifications. Show `notify` events as a transient toast (info, warning, error), and also append them to a per-session list kept in the debug view so a missed one can be read. Decision needed on whether notifications also go into the transcript (see decisions).
+3. Notifications. Show `notify` events as a transient toast (info, warning, error), and also append them to a per-session list kept in the debug view so a missed one can be read. Notifications are not added to the transcript.
 4. Optional: record handled prompts. Store `(session_id, text, timestamp)` in a new table `session_commands` (migration v7, cascade delete on the session) when a prompt response has `disposition: "handled"`, and merge them into the history by timestamp, as user messages, when the history is rebuilt. `/pipan-intent` traffic does not pass through chat input and is not recorded. Decision needed.
 5. Types: add `customType`, `display`, `details` to the raw message type, and a `kind: 'custom'` branch to `ChatMessage`.
 
@@ -182,7 +182,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 2. **F1, duplicate graph actions.** Decided: drop the later duplicate and add a notice. The first action with an id wins.
 3. **F3, auto-open.** Decided: once per session and topic for every graph, with no protocol change.
 4. **F3, panel cap.** Decided: at most 4 panels are opened automatically per session. Further topics stay available in the "+" picker.
-5. **F4, notifications.** Toast only, or also a line in the transcript. A transcript line survives a reload only if it is recorded, which needs the same table as handled commands.
+5. **F4, notifications.** Decided: toast only, plus the per-session list in the debug view. Nothing is added to the transcript. Error toasts stay until dismissed.
 6. **F4, handled-command record.** Add `session_commands` (a schema change and a merge in the history rebuild) or accept that handled commands do not survive a reload because Pi does not store them. Recommended: add it, since a transcript that drops what the user typed is hard to follow, but it is the largest part of F4.
 7. **F5, scope.** Whether the dialog bridge belongs in this work or in a separate plan. It is the largest item here and it is not about channels, but without it any extension that uses Pi's dialogs hangs in PiPan.
 8. **F5, provenance wording** for bridged dialogs, since Pi does not say which extension asked.
