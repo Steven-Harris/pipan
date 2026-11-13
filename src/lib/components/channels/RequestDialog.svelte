@@ -2,15 +2,19 @@
   // Modal for the oldest pending request of a session. Closing it by any route other than an
   // answer (Esc, the Cancel button) cancels the request.
   import { onMount } from 'svelte';
-  import type { FormAnswer, FormRequest } from '#lib/channels/types.ts';
+  import type { FormAnswer, FormRequest, ReviewAnswer, ReviewRequest } from '#lib/channels/types.ts';
   import { channels, type PendingRequest } from '#lib/stores/channels.svelte.ts';
   import FormView from './FormView.svelte';
+  import ReviewView from './review/ReviewView.svelte';
 
   let { request, waiting }: { request: PendingRequest; waiting: number } = $props();
 
   let dialog: HTMLDialogElement;
   const form = $derived(request.kind === 'form' ? (request.payload as FormRequest) : null);
-  const title = $derived(form ? form.title : 'Unsupported request');
+  const review = $derived(request.kind === 'review' ? (request.payload as ReviewRequest) : null);
+  const title = $derived(form?.title ?? review?.title ?? 'Unsupported request');
+  let unsent = $state(0);
+  let confirmDiscard = $state(false);
   const titleId = $derived(`request-title-${request.requestId}`);
 
   onMount(() => {
@@ -19,12 +23,25 @@
     dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus();
   });
 
-  async function answer(value: FormAnswer) {
+  async function answer(value: FormAnswer | ReviewAnswer) {
     await channels.answer(request.sessionId, request.requestId, value);
   }
 
   function cancel() {
     void channels.cancel(request.sessionId, request.requestId);
+  }
+
+  /** Cancel asks first when the user has comments that would be lost. */
+  function requestCancel() {
+    if (unsent > 0) confirmDiscard = true;
+    else cancel();
+  }
+
+  function oncancel(event: Event) {
+    if (unsent > 0 && !confirmDiscard) {
+      event.preventDefault();
+      confirmDiscard = true;
+    }
   }
 
   // Fires for Esc and the back gesture. An answer removes the request first, so the dialog is
@@ -38,7 +55,8 @@
   bind:this={dialog}
   aria-labelledby={titleId}
   {onclose}
-  class="m-auto flex max-h-[85vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 p-0 text-zinc-100 shadow-2xl backdrop:bg-black/60 open:flex"
+  {oncancel}
+  class="m-auto flex max-h-[85vh] {review ? 'h-[85vh] w-[80rem]' : 'w-[34rem]'} max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 p-0 text-zinc-100 shadow-2xl backdrop:bg-black/60 open:flex"
 >
   <header class="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800 px-4 py-3">
     <div class="min-w-0">
@@ -50,14 +68,26 @@
     </div>
     <button
       type="button"
-      onclick={cancel}
+      onclick={requestCancel}
       class="shrink-0 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-200 hover:bg-zinc-700 cursor-pointer"
       >Cancel</button
     >
   </header>
 
+  {#if confirmDiscard}
+    <div role="alert" class="flex shrink-0 items-center gap-3 border-b border-red-900/60 bg-red-950/40 px-4 py-2 text-xs text-red-100">
+      <span class="mr-auto">Discard {unsent} unsent {unsent === 1 ? 'change' : 'changes'} and cancel the review?</span>
+      <button type="button" onclick={() => (confirmDiscard = false)} class="cursor-pointer rounded border border-zinc-600 px-2 py-0.5 hover:bg-zinc-800"
+        >Keep reviewing</button
+      >
+      <button type="button" onclick={cancel} class="cursor-pointer rounded border border-red-600 bg-red-900/60 px-2 py-0.5 hover:bg-red-800">Discard</button>
+    </div>
+  {/if}
+
   {#if form}
     <FormView {form} onanswer={answer} />
+  {:else if review}
+    <ReviewView {review} onanswer={answer} bind:unsent />
   {:else}
     <div class="space-y-2 px-4 py-4 text-xs text-zinc-300">
       <p>

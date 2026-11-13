@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { addComment, buildReviewAnswer, createReviewState, dismissComment } from '../src/lib/channels/review-model.ts';
+import type { ReviewRequest } from '../src/lib/channels/types.ts';
 import { buildAnswer, initialValues, validateValues } from '../src/lib/channels/form-state.ts';
 import type { FormRequest } from '../src/lib/channels/types.ts';
 import { channels, type ChannelPiEvent } from '../src/lib/stores/channels.svelte.ts';
@@ -183,6 +185,39 @@ describe.skipIf(!hasPi)('channels store against real Pi', () => {
     expect((await finished()).answer).toBeNull();
     expect(channels.pending[SID] ?? []).toHaveLength(0);
   });
+
+  it('review: comments round-trip with ids and touched, and earlier threads arrive', async () => {
+    const { request, finished } = await askAndWait('/demo-review-diff');
+    const review = request.payload as ReviewRequest;
+    expect(review.subject.type).toBe('diff');
+    expect(review.comments.map((c) => c.id)).toEqual(['c1']);
+    let model = createReviewState(review.comments);
+    model = addComment(model, { path: 'src/module1.ts', side: 'new', line: 4, endLine: 6, text: 'Extract this.' }).state;
+    await channels.answer(SID, request.requestId, buildReviewAnswer(model, 'changes', 'see comments'));
+    const answer = (await finished()).answer;
+    expect(answer.choice).toBe('changes');
+    expect(answer.touched).toEqual(['tmp-1']);
+    expect(answer.note).toBe('see comments');
+    expect(answer.comments.map((c: { id: string }) => c.id)).toEqual(['c1', 'tmp-1']);
+    expect(answer.comments[1]).toMatchObject({ path: 'src/module1.ts', side: 'new', line: 4, endLine: 6, status: 'open' });
+  });
+
+  it('review: dismissing an earlier comment is reported as touched', async () => {
+    const { request, finished } = await askAndWait('/demo-review-diff');
+    const model = dismissComment(createReviewState((request.payload as ReviewRequest).comments), 'c1');
+    await channels.answer(SID, request.requestId, buildReviewAnswer(model, 'approve'));
+    const answer = (await finished()).answer;
+    expect(answer.touched).toEqual(['c1']);
+    expect(answer.comments[0].status).toBe('dismissed');
+  });
+
+  it('review: the 50,000-line diff arrives and can be answered', async () => {
+    const { request, finished } = await askAndWait('/demo-review-diff large');
+    const review = request.payload as ReviewRequest;
+    expect(review.subject.type === 'diff' && review.subject.files).toHaveLength(50);
+    await channels.answer(SID, request.requestId, buildReviewAnswer(createReviewState(review.comments), 'approve'));
+    expect((await finished()).answer.choice).toBe('approve');
+  }, 60_000);
 
   it('a request that is not shown by this version is cancelled so the producer continues', async () => {
     const { request, finished } = await askAndWait('/demo-review-doc');
