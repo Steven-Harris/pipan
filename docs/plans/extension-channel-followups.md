@@ -180,7 +180,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 
 1. **F1, migration approach.** Decided: add v6 that rebuilds the table. v5 stays as shipped on the branch.
 2. **F1, duplicate graph actions.** Decided: drop the later duplicate and add a notice. The first action with an id wins.
-3. **F3, auto-open.** Once per session and topic, as written, or only for topics the producer marks as important (an extra field, more protocol).
+3. **F3, auto-open.** Decided: once per session and topic for every graph, with no protocol change.
 4. **F3, panel cap.** Whether to cap automatically opened panels per session.
 5. **F4, notifications.** Toast only, or also a line in the transcript. A transcript line survives a reload only if it is recorded, which needs the same table as handled commands.
 6. **F4, handled-command record.** Add `session_commands` (a schema change and a merge in the history rebuild) or accept that handled commands do not survive a reload because Pi does not store them. Recommended: add it, since a transcript that drops what the user typed is hard to follow, but it is the largest part of F4.
