@@ -200,6 +200,12 @@ Carried over from the first plan:
 12. **Markdown sanitizer.** Decided: DOMPurify over `marked` output, replacing the hand-written sanitizer. Implemented in F1 task 5.
 13. **Chunk size unit.** Decided: keep 65,536 UTF-16 code units per chunk. The guide says so. Pi's RPC has no stated line size limit.
 
+## 6a. Known limitations
+
+- **Switching sessions interrupts the old one.** PiPan runs one Pi process. Switching to another session of the same workspace sends `switch_session`, and Pi aborts the in-flight response, saves it, shuts down the old extension instances and loads new ones. Switching to another folder or to a headless session stops the process. A producer's in-memory run, its graph and its pending requests end with the session, and PiPan does not warn before this happens. This applies to every session, not only to channels.
+- **A producer must restore its own run.** After a switch back, the shim has no state until the producer republishes at `session_start`. The reference producer keeps its run in memory only and does not restore it.
+- **Possible follow-ups, not planned:** a confirm before a switch, a new chat or Stop Process while the agent is responding or a graph has active nodes (which also needs the `switch_session` response to be handled when Pi refuses with `cancelled: true`); a reference producer that saves and restores its run; one Pi process per session for background runs.
+
 ## 7. Verification matrix
 
 | Layer | Tool |

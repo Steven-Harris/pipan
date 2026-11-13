@@ -48,6 +48,8 @@ state("graph", "graph", null); // clear
 
 Publish on each status change. The host applies at most 10 updates per second. `graph.id`, with the channel and topic, is the key under which users' dragged node positions are saved, so keep it stable for one logical run.
 
+Panels and state last as long as the Pi session. If the user switches to another session, starts a new chat or opens another folder, Pi shuts down your extension and starts a new instance for the next session, so a run held in memory stops and the graph disappears. Save what you need to resume (for example with `pi.appendEntry`) and republish at `session_start`. The reference producer does not do this.
+
 ## 3. Ask a question
 
 `pipan:request` shows a modal and resolves `reply` with the answer, or with `undefined` when the user cancels or the session ends. Always handle `undefined`.
