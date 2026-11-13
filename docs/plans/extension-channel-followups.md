@@ -179,7 +179,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 ## 6. Decisions needed
 
 1. **F1, migration approach.** Decided: add v6 that rebuilds the table. v5 stays as shipped on the branch.
-2. **F1, duplicate graph actions.** Drop with a notice (recommended) or reject the whole graph.
+2. **F1, duplicate graph actions.** Decided: drop the later duplicate and add a notice. The first action with an id wins.
 3. **F3, auto-open.** Once per session and topic, as written, or only for topics the producer marks as important (an extra field, more protocol).
 4. **F3, panel cap.** Whether to cap automatically opened panels per session.
 5. **F4, notifications.** Toast only, or also a line in the transcript. A transcript line survives a reload only if it is recorded, which needs the same table as handled commands.
