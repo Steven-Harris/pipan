@@ -23,7 +23,7 @@ No reply means no host. A reply without the primitive you need means you must us
 
 ## 2. Publish a graph
 
-`pipan:state` publishes the latest value of a topic. The host replaces the previous value, keeps it per session, and shows a panel in the panel picker.
+`pipan:state` publishes the latest value of a topic. The host replaces the previous value, keeps it per session, and opens a panel for a graph the first time it is published (once per session and topic; a panel the user closes stays closed, and at most 4 open by themselves). Other graph topics are in the panel picker.
 
 ```ts
 const CH = "acme.demo"; // your channel id: dotted, lowercase
@@ -116,6 +116,8 @@ pi.events.on("pipan:intent", (data) => {
 ```
 
 Intents arrive outside any command, so keep a reference to the latest context if you need to notify the user.
+
+Use a graph action for a control the user may press at any time, such as pause, retry or abort. A decision the producer is waiting on is a request (section 3): it opens a dialog and returns the answer directly. A node that waits for the decision can show `status: "waiting"` at the same time, which selects the node and marks the panel tab, and can also carry a graph action as a second way to decide. The reference producer's `/demo-graph` does both at its Approve step.
 
 ## 6. Write to the log
 

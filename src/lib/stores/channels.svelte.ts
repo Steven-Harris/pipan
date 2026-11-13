@@ -102,6 +102,12 @@ const stateKey = (sessionId: string, ch: string, topic: string) => `${sessionId}
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** A graph state that was just applied, with the one it replaced. */
+export interface GraphCommit {
+  state: ChannelState;
+  previous: ChannelState | undefined;
+}
+
 class ChannelsStore {
   /** Sessions whose shim has announced, with what the host advertised. */
   hosts = $state.raw<Record<string, HostInfo>>({});
@@ -128,6 +134,24 @@ class ChannelsStore {
   private lastCommit = new Map<string, number>();
   private nextId = 0;
   private nextErrorId = 0;
+  private graphListeners = new Set<(commit: GraphCommit) => void>();
+  private resetListeners = new Set<() => void>();
+
+  /** Calls `listener` after every applied graph state. Returns an unsubscribe function. */
+  onGraph(listener: (commit: GraphCommit) => void): () => void {
+    this.graphListeners.add(listener);
+    return () => this.graphListeners.delete(listener);
+  }
+
+  /** Calls `listener` when all state is dropped (session change or process exit). */
+  onReset(listener: () => void): () => void {
+    this.resetListeners.add(listener);
+    return () => this.resetListeners.delete(listener);
+  }
+
+  private notifyReset(): void {
+    for (const listener of this.resetListeners) listener();
+  }
 
   configure(transport: ChannelTransport | null): void {
     this.transport = transport;
@@ -277,7 +301,17 @@ class ChannelsStore {
     }
     this.dropHeld(key);
     this.lastCommit.set(key, Date.now());
+    const previous = this.states[key];
     this.states = { ...this.states, [key]: state };
+    if (state.primitive === 'graph') {
+      for (const listener of this.graphListeners) {
+        try {
+          listener({ state, previous });
+        } catch (error) {
+          console.error('Channel graph listener failed:', error);
+        }
+      }
+    }
   }
 
   private dropHeld(key: string): void {
@@ -417,6 +451,7 @@ class ChannelsStore {
     this.states = {};
     this.dropAllHeld();
     this.seqs.clear();
+    this.notifyReset();
   }
 
   // ---- Outbound ----------------------------------------------------------------------------
@@ -447,6 +482,7 @@ class ChannelsStore {
    * session file.
    */
   processExited(): void {
+    this.notifyReset();
     this.hosts = {};
     this.states = {};
     this.dropAllHeld();

@@ -163,7 +163,7 @@ All work happens locally on one branch, `feat/extension-channel`, created from `
 
 ## 6a. Follow-ups from the manual run
 
-Found while running the reference producer in `pnpm tauri dev`. Not started.
+Found while running the reference producer in `pnpm tauri dev`. Items 1 to 3 are done in the follow-ups plan (F3), see [extension-channel-followups.md](./extension-channel-followups.md).
 
 1. **Graph panels open only from the picker.** After a producer publishes a graph, nothing visible happens until the user opens the panel from the "+" menu. Proposal: open a graph panel once per session and topic, the first time it is published. If the user closes it, it stays closed for that session. Changes spec section 8, which says panels are not opened automatically.
 2. **A waiting node with actions is easy to miss.** Proposal: when a node enters `waiting` and has actions, select it so its drawer opens, and show an attention dot on the panel tab while the panel is not in view.

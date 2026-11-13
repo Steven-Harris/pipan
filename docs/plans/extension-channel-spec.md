@@ -261,7 +261,7 @@ Rules:
 ## 8. Host behavior
 
 - State is stored per `(sessionId, ch, topic)`, last value wins, and survives panel close.
-- The first state seen for a channel adds an entry for it to the panel picker (not opened automatically). A `request` opens its surface immediately and is queued behind any pending request for the same session.
+- The first state seen for a graph topic adds an entry for it to the panel picker and opens its panel once per session and topic. A panel the user closes stays closed for that session, and the host opens at most 4 panels by itself per session; further topics stay in the picker. When a node enters `waiting` and has actions, the panel selects it, unless the user picked another node in the last few seconds, and a panel that is not in view shows a dot on its tab until it is looked at. A `request` opens its surface immediately and is queued behind any pending request for the same session.
 - The host cancels every pending request for a session when the session switches, stops, or the process exits. It sends `cancelled: true` for each outstanding Pi request id.
 - After a session switch or attach, the host sends `_shim.resync` and reloads the log with `get_entries`, using the last-seen entry id as `since`.
 - Payloads that fail validation are dropped. The host shows "Extension `<ch>` sent an invalid `<primitive>`" with details in the stderr log pane. For a request it answers `cancelled`.

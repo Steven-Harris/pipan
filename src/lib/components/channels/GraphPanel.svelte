@@ -21,6 +21,8 @@
   import { TONE_CLASSES, STATUS_STYLES, resolveTone } from '#lib/channels/graph-style.ts';
   import type { GraphAction, GraphNode, GraphState } from '#lib/channels/types.ts';
   import { channelGraphLayout, type GraphRef } from '#lib/stores/channel-graph-layout.svelte.ts';
+  import { graphPanelId } from '#lib/channels/panels.ts';
+  import { channelAttention } from '#lib/stores/channel-attention.svelte.ts';
   import { channels } from '#lib/stores/channels.svelte.ts';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import ChannelGraphNodeCard from './ChannelGraphNode.svelte';
@@ -64,6 +66,26 @@
   let nodes = $state.raw<ChannelFlowNode[]>([]);
   let edges = $state.raw<Edge[]>([]);
   let selectedId = $state<string | null>(null);
+  /** When the user last picked a node by hand. A node that starts waiting does not take over right after. */
+  let lastPickedAt = 0;
+  const PICK_GRACE_MS = 5000;
+  const panelId = $derived(graphPanelId(ch, topic));
+
+  function pick(id: string | null) {
+    selectedId = id;
+    lastPickedAt = id === null ? 0 : Date.now();
+  }
+
+  // Select the node that started waiting for the user, so its actions are in view.
+  $effect(() => {
+    const target = channelAttention.focus[panelId];
+    if (!target || !graph) return;
+    if (graph.nodes.some((n) => n.id === target)) {
+      const recentlyPicked = untrack(() => selectedId !== null && Date.now() - lastPickedAt < PICK_GRACE_MS);
+      if (!recentlyPicked) selectedId = target;
+    }
+    channelAttention.consumeFocus(panelId);
+  });
   const dragging = new Set<string>();
 
   $effect(() => {
@@ -244,8 +266,8 @@
         proOptions={{ hideAttribution: true }}
         onnodedragstart={onNodeDragStart}
         onnodedragstop={onNodeDragStop}
-        onnodeclick={({ node }) => (selectedId = node.id)}
-        onpaneclick={() => (selectedId = null)}
+        onnodeclick={({ node }) => pick(node.id)}
+        onpaneclick={() => pick(null)}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
         <Controls position="bottom-left" showLock={false} />

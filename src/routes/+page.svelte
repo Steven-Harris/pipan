@@ -18,9 +18,11 @@
   import DoctorModal from '#lib/components/DoctorModal.svelte';
   import SettingsAuthModal from '#lib/components/SettingsAuthModal.svelte';
   import RequestHost from '#lib/components/channels/RequestHost.svelte';
+  import { channelAttention } from '#lib/stores/channel-attention.svelte.ts';
 
   onMount(() => {
     workspaceStore.init();
+    channelAttention.init();
     void extensionRegistry.init();
     chatStore.init();
     flowStore.init();

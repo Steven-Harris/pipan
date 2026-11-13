@@ -3,6 +3,7 @@
   import { SvelteFlowProvider } from '@xyflow/svelte';
   import { workspaceStore, type PanelId } from '#lib/stores/workspace.svelte.ts';
   import { getPanelDefinition, PANELS } from '#lib/workspace/panels.ts';
+  import { channelAttention } from '#lib/stores/channel-attention.svelte.ts';
   import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import FlowCanvas from './FlowCanvas.svelte';
   import FileExplorerPanel from './FileExplorerPanel.svelte';
@@ -103,6 +104,14 @@
             >
               <Icon class="h-3.5 w-3.5 {active ? 'text-indigo-400' : ''}" />
               <span>{def.label}</span>
+              {#if channelAttention.unseen[id]}
+                <span
+                  class="h-1.5 w-1.5 rounded-full bg-amber-400"
+                  title="Waiting for you"
+                  role="img"
+                  aria-label="Waiting for you"
+                ></span>
+              {/if}
             </button>
             <button
               type="button"

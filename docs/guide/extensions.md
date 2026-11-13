@@ -193,4 +193,4 @@ export interface PiPanExtensionManifest {
 
 ### Channel contributions
 
-`contributes.channels` fixes the title, icon and placement of a graph panel for a topic of the plugin's own channel (the channel id is the plugin id). The panel is listed in the panel picker before the producer publishes anything. `primitive` must be `graph`.
+`contributes.channels` fixes the title, icon and placement of a graph panel for a topic of the plugin's own channel (the channel id is the plugin id). The panel is listed in the panel picker before the producer publishes anything, and opens by itself the first time the producer publishes that topic in a session. `primitive` must be `graph`.

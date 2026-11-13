@@ -234,6 +234,28 @@ test("resync: re-emits cached state and announces", async () => {
 	assert(widgets(graphKey).at(-1).widgetLines === undefined, "cleared topic is not resurrected");
 });
 
+test("graph approval: the waiting node comes with a form request, and approving advances the run", async () => {
+	const key = `pipan:s:${CH}:graph`;
+	let asked;
+	responder = answerWith((payload) => {
+		asked = payload;
+		return { action: "approve", values: {} };
+	});
+	const from = widgets(key).length; // earlier tests left states of the same graph
+	await runCommand("/demo-graph");
+	const done = await waitFor(
+		() => widgets(key).slice(from).find((w) => w.widgetLines && decodeWidget(w).payload.data.nodes.find((n) => n.id === "approve")?.status === "done"),
+		"approval node done",
+		15000,
+	);
+	eq(asked.payload.title, "Approve the release?", "approval is asked as a form request");
+	const waiting = widgets(key).slice(from).find((w) => w.widgetLines && decodeWidget(w).payload.data.nodes.find((n) => n.id === "approve")?.status === "waiting");
+	assert(waiting, "the approval node was published as waiting");
+	eq(decodeWidget(waiting).payload.data.nodes.find((n) => n.id === "approve").actions[0].id, "approve", "graph action stays available");
+	assert(decodeWidget(done).payload.data.nodes.find((n) => n.id === "ship").status === "active", "run moved on to ship");
+	await runCommand("/demo-graph clear");
+});
+
 test("intent: reaches the producer", async () => {
 	const before = results().length;
 	const response = await prompt(

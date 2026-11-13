@@ -73,11 +73,7 @@ export default function (pi: Pi) {
 	pi.events.on("pipan:intent", (data) => {
 		if (data?.ch !== CH || !sessionCtx) return;
 		report(sessionCtx, { intent: { name: data.name, payload: data.payload } });
-		if (data.name === "graph.action" && data.payload?.actionId === "approve" && STEPS[graphIndex]?.kind === "approval") {
-			graphIndex += 1;
-			state("graph", "graph", graphAt(graphIndex));
-			run();
-		}
+		if (data.name === "graph.action" && data.payload?.actionId === "approve") advanceFromApproval();
 		// Also write a log entry, so the intent is visible in PiPan without reading notifications.
 		pi.events.emit("pipan:log", { ch: CH, name: "intent-received", as: "entry", payload: { name: data.name, payload: data.payload } });
 	});
@@ -115,13 +111,44 @@ export default function (pi: Pi) {
 
 	let graphIndex = 0;
 
-	/** Advances once a second. Stops at an approval step and waits for the user's Approve action. */
+	/** Moves past the approval step, however the user approved. A decision made twice is ignored. */
+	const advanceFromApproval = () => {
+		if (STEPS[graphIndex]?.kind !== "approval") return;
+		graphIndex += 1;
+		state("graph", "graph", graphAt(graphIndex));
+		run();
+	};
+
+	let approvalAsked = false;
+
+	/**
+	 * A decision the run waits on is a request, so the user gets a dialog. The graph action on the
+	 * waiting node stays available as a second way to approve. Rejecting or closing the dialog
+	 * leaves the node waiting.
+	 */
+	const askApproval = async () => {
+		if (approvalAsked) return;
+		approvalAsked = true;
+		const answer = (await request("form", {
+			title: "Approve the release?",
+			body: "The pipeline is waiting at **Approve**.",
+			actions: [
+				{ id: "approve", label: "Approve", style: "primary" },
+				{ id: "reject", label: "Not yet" },
+			],
+		})) as { action?: string } | undefined;
+		approvalAsked = false;
+		if (answer?.action === "approve") advanceFromApproval();
+	};
+
+	/** Advances once a second. At the approval step it asks and waits for the user. */
 	const run = () => {
 		if (timer) clearInterval(timer);
 		timer = setInterval(() => {
 			if (STEPS[graphIndex]?.kind === "approval") return; // waiting for the user
 			graphIndex += 1;
 			state("graph", "graph", graphAt(graphIndex));
+			if (STEPS[graphIndex]?.kind === "approval") void askApproval();
 			if (graphIndex >= STEPS.length && timer) {
 				clearInterval(timer);
 				timer = undefined;
