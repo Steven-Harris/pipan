@@ -21,6 +21,10 @@ pi.on("session_start", () => void hello());
 
 No reply means no host. A reply without the primitive you need means you must use your normal UI. Call `hello` after `session_start`, and again before each use, because it is cheap.
 
+### Where to put the producer
+
+Pi loads extensions from `~/.pi/agent/extensions/`, from a package listed in `~/.pi/agent/settings.json`, and from `.pi/extensions/` in the project. Pi skips the project folder until the project is trusted, and over RPC (which is how PiPan runs Pi) it cannot ask, so a producer in `.pi/extensions/` of an untrusted folder silently does not load: its commands do not exist and `hello` gets no reply from it. Trust the folder first (the `/trust` command in a Pi terminal, or an entry for the folder in `~/.pi/agent/trust.json`), or install the producer at the user level or as a package, which trust does not affect. Pi reads extensions and trust when a session process starts, so stop and reopen the session after changing either.
+
 ## 2. Publish a graph
 
 `pipan:state` publishes the latest value of a topic. The host replaces the previous value, keeps it per session, and opens a panel for a graph the first time it is published (once per session and topic; a panel the user closes stays closed, and at most 4 open by themselves). Other graph topics are in the panel picker.

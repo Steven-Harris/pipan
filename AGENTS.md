@@ -265,7 +265,9 @@ Pi extensions drive native PiPan UI through channels. The contract is in `docs/g
 - **Carriers**: state is a widget `pipan:s:<ch>:<topic>`, a request is an `editor` dialog titled `pipan:r:<ch>:<kind>`, the log is custom entries and messages `pipan:l:<ch>:<name>`, an intent is a prompt `/pipan-intent <json>`, and the shim announces itself with the widget `pipan:shim`.
 - **Frontend** (`src/lib/channels/`, `src/lib/stores/channels.svelte.ts`): codec, validators, the channel store, and the primitives: `graph` (panel, Dagre layout), `review` (diff and document, line comments) and `form`. `RequestHost.svelte` shows the oldest pending request of the viewed session in a modal. Pending requests are cancelled when the session switches, stops or exits.
 - **Pi dialogs**: `extension_ui_request` records for `select`, `confirm`, `input` and `editor` that are not channel requests are shown as forms in the same modal and queue (`src/lib/channels/dialog-bridge.ts`). Pi's `timeout` closes the modal locally. Plan-gate approvals (`PIPAN_APPROVAL::`) are left to `approval.rs`.
-- **Plugin API**: `window.pipan.channel(id)` gives plugins `subscribe`, `onRequest` and `intent`. `registerExtension` accepts `messageRenderers`, and manifests accept `contributes.channels`.
+- **Attention** (`src/lib/stores/channel-attention.svelte.ts`, `src/lib/channels/attention.ts`): a graph panel opens once per session and topic on first publish (at most 4 per session), a node that starts waiting with actions is selected, and a hidden panel shows a dot on its tab until the node stops waiting or the panel is shown.
+- **Chat messages and notifications**: `pi.sendMessage` messages with `display: true` are drawn as cards in the chat (`src/lib/chat/custom-messages.ts`), except `pipan:l:` log messages. `notify` events become toasts (`src/lib/stores/notifications.svelte.ts`, `ToastHost.svelte`), kept per session in the dev debug view.
+- **Plugin API**: `window.pipan.channel(id)` gives plugins `subscribe`, `onRequest` and `intent`. `registerExtension` accepts `messageRenderers`, and manifests accept `contributes.channels`. Containers that plugins draw into use the `.plugin-surface` class, which gives native controls a baseline style.
 - **Tests**: `pnpm test:channel` drives `examples/channel-reference/producer.ts` through a real `pi --mode rpc` process. `pnpm test` covers the store, validators and review model. `pnpm channels:schema` regenerates `docs/public/channels.schema.json` from `src/lib/channels/types.ts`, and a test fails when the file is stale.
 
 ### f. Dependency Doctor
@@ -329,12 +331,16 @@ pipan/
 │   │   │   ├── nodes/                     # Svelte Flow custom graph node cards
 │   │   │   └── panels/                    # Split panels (Files, Terminal, PRs)
 │   │   ├── stores/                # Reactive state machines (Svelte 5 runes)
+│   │   │   ├── channel-attention.svelte.ts # Graph panel auto-open, waiting marks
+│   │   │   ├── channel-graph-layout.svelte.ts # Dragged node positions of channel graphs
+│   │   │   ├── channels.svelte.ts         # Extension channel state, requests, Pi dialogs
 │   │   │   ├── chat.svelte.ts             # Pi RPC session and message store
 │   │   │   ├── doctor.svelte.ts           # Diagnostic checks and auto-fix store
 │   │   │   ├── files.svelte.ts            # Workspace files and Git status store
 │   │   │   ├── flow.svelte.ts             # Agent DAG and approval gate store
 │   │   │   ├── github.svelte.ts           # PRs, diffs, reviews, and webhook store
 │   │   │   ├── graph-layout.svelte.ts     # Dagre layout and coordinate persistence
+│   │   │   ├── notifications.svelte.ts    # Extension notifications shown as toasts
 │   │   │   ├── terminal.svelte.ts         # PTY terminal manager store
 │   │   │   ├── usage.svelte.ts            # Cost ledger and token analytics store
 │   │   │   └── workspace.svelte.ts        # Split panels, layout, and active views
@@ -342,7 +348,8 @@ pipan/
 │   │   │   ├── builtin.ts                 # Manifests for built-in extensions
 │   │   │   ├── registry.svelte.ts         # Extension registration and lifecycle store
 │   │   │   └── types.ts                   # Manifest and contribution type contracts
-│   │   ├── channels/              # Extension channel codec, validators, review model, plugin API
+│   │   ├── channels/              # Extension channel codec, validators, review model, dialog bridge, plugin API
+│   │   ├── chat/                  # Extension message display rules
 │   │   ├── flow/                  # DAG layout algorithms and telemetry helpers
 │   │   ├── types/                 # Shared TypeScript interfaces
 │   │   │   ├── agent.ts                   # Multi-agent and approval payload types
