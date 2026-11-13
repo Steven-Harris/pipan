@@ -52,6 +52,7 @@ interface Envelope<T> { v: 1; ch: string; seq?: number; payload: T }
 | Request | An `editor` dialog. `title = "pipan:r:<ch>:<kind>"`. `prefill` is the JSON of `Envelope<{ requestId, payload }>`. The reply `value` is the JSON of `Envelope<{ requestId, payload }>`. A `cancelled: true` reply means no answer. |
 | Log entry | `appendEntry("pipan:l:<ch>:<name>", payload)`. |
 | Log message | `sendMessage({ customType: "pipan:l:<ch>:<name>", ... })`. |
+| Request expiry | `setWidget("pipan:x:<requestId>", [json])` then cleared, where json is `Envelope<{ requestId, reason: "timeout" }>`. The `editor` dialog has no timeout over RPC, so the shim times the request out itself (default 30 minutes, or the producer's `timeoutMs`) and emits this so the host can close the surface. The host SHOULD still answer the outstanding Pi request id with `cancelled: true`; the shim ignores late answers. |
 | Intent | `prompt` with `/pipan-intent <json>` where json is `{ v: 1, ch, name, payload }`. The host checks `get_commands` for `pipan-intent` before sending. |
 | Shim announce | `setWidget("pipan:shim", [json of HostInfo])` on every `session_start` (idempotent; the event can fire more than once per session). The host reads this to learn that a shim is present. |
 
