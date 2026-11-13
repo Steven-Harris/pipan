@@ -18,7 +18,7 @@ Each was checked against the code or the Pi 1.5.0 docs.
 - **Several keyed `{#each}` lists take their keys from producer data and are not checked for uniqueness.** Svelte throws at render when keys repeat. The validator checks unique ids for nodes, form fields, form actions and review choices only. The unchecked keys are: diff file `path`, document `path`, comment `id`, form option `value`, graph action `id` (graph-level and node-level).
 - **PiPan answers only `extension_ui_request` records that belong to the channel.** `channels.svelte.ts` `handleUiRequest` returns false for everything else, and `chat.svelte.ts` has no handler. So Pi's `select`, `input`, `confirm` and non-channel `editor` dialogs are never answered, and the extension that asked waits forever. `notify` and `setStatus` are also not displayed. Subagent approval requests (`PIPAN_APPROVAL::` titles) are handled in Rust for subagent processes and are not affected.
 - **Custom messages are not drawn in the chat.** `chat.svelte.ts` handles `message_start` and the history rebuild only for roles `user`, `assistant` and tool results. A `pi.sendMessage` message with `display: true` is stored by Pi but never shown, live or after a reload.
-- **Extension commands are not stored by Pi.** A prompt that an extension command handles has response `disposition: "handled"` and adds nothing to the session file, so the chat cannot rebuild it after a reload. The live chat shows it (fixed in `25c5043`).
+- **Extension commands are not stored by Pi.** A prompt that an extension command handles has response `disposition: "handled"` and adds nothing to the session file, so the chat cannot rebuild it after a reload, the same as in Pi's own TUI. The live chat shows it (fixed in `25c5043`).
 - **There is one primary Pi process.** Switching sessions sends `switch_session` to the same process, and `channels.beforeSessionChange` cancels every pending request first (spec section 8). So a request cannot be pending in a session the user is not viewing. The earlier plan's "badge in the session list" recommendation is moot. The real issue is that clicking another session silently cancels a pending ask.
 - **Graph panels open only from the "+" picker** (`registry.svelte.ts` `contributedPanels`, spec section 8). A producer that publishes a graph, or an idle graph with a start button, is invisible until the user opens the panel by hand.
 - **A graph with no nodes and some graph-level actions is valid** (checked against `validateGraph` and `layoutChannelGraph`), and `GraphPanel.svelte` draws graph-level actions in its header whatever the node count. This gives a producer a launcher with no host change.
@@ -105,10 +105,9 @@ Tasks:
 1. Custom messages. Draw `role: "custom"` messages with `display: true` in the transcript, live (`message_end`) and in the history rebuild (`hydrateFromRawMessages`). Show the text as a distinct system card with the extension's `customType` as a small label, rendered with the existing sanitized markdown. Messages with `display: false` stay hidden. Channel log messages (`pipan:l:...`) stay out of the chat unless a plugin renderer exists, as now.
 2. Plugin override. A plugin's `messageRenderers` entry still wins for its own channel's log messages. The new card is the fallback for any other custom message.
 3. Notifications. Show `notify` events as a transient toast (info, warning, error), and also append them to a per-session list kept in the debug view so a missed one can be read. Notifications are not added to the transcript.
-4. Optional: record handled prompts. Store `(session_id, text, timestamp)` in a new table `session_commands` (migration v7, cascade delete on the session) when a prompt response has `disposition: "handled"`, and merge them into the history by timestamp, as user messages, when the history is rebuilt. `/pipan-intent` traffic does not pass through chat input and is not recorded. Decision needed.
-5. Types: add `customType`, `display`, `details` to the raw message type, and a `kind: 'custom'` branch to `ChatMessage`.
+4. Types: add `customType`, `display`, `details` to the raw message type, and a `kind: 'custom'` branch to `ChatMessage`.
 
-Tests: hydrate and live cases for display true and false; a handled-command record round trip if task 4 is accepted.
+Tests: hydrate and live cases for display true and false.
 
 Acceptance: a producer's `pi.sendMessage` message appears in the chat when sent and after reloading the session; a `notify` appears as a toast.
 
@@ -167,7 +166,7 @@ Goal: everything built is documented, and the unverified paths are exercised in 
 
 Tasks:
 1. Guide changes for F1 to F7, plus a note in the authoring guide that a project-local producer needs the project to be trusted (`/trust`, or an entry in `~/.pi/agent/trust.json`), and that user-level extensions and packages are not affected.
-2. Update `AGENTS.md`: the migrations (v6 position key, v7 if F4 task 4 is accepted), new commands if any, the dialog bridge, the new chat message kind.
+2. Update `AGENTS.md`: the migration (v6 position key), new commands if any, the dialog bridge, the new chat message kind.
 3. Manual run in `pnpm tauri dev` with the reference producer, covering what has not been exercised in the real app: the debug view, graph drag persistence across a restart, every `/demo-*` command, the dialog bridge with a producer that calls `ctx.ui` directly, custom messages after a reload, and a session switch with a pending request.
 
 Acceptance: the checklist in section 7 is complete and recorded.
@@ -183,7 +182,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 3. **F3, auto-open.** Decided: once per session and topic for every graph, with no protocol change.
 4. **F3, panel cap.** Decided: at most 4 panels are opened automatically per session. Further topics stay available in the "+" picker.
 5. **F4, notifications.** Decided: toast only, plus the per-session list in the debug view. Nothing is added to the transcript. Error toasts stay until dismissed.
-6. **F4, handled-command record.** Add `session_commands` (a schema change and a merge in the history rebuild) or accept that handled commands do not survive a reload because Pi does not store them. Recommended: add it, since a transcript that drops what the user typed is hard to follow, but it is the largest part of F4.
+6. **F4, handled-command record.** Decided: not recorded. A prompt that an extension command handles is not stored by Pi, and the history after a reload matches Pi's own behavior. Revisit with a `session_commands` table if it becomes a problem.
 7. **F5, scope.** Whether the dialog bridge belongs in this work or in a separate plan. It is the largest item here and it is not about channels, but without it any extension that uses Pi's dialogs hangs in PiPan.
 8. **F5, provenance wording** for bridged dialogs, since Pi does not say which extension asked.
 9. **F7, package.** JSON Schema in the docs site only, or also an npm package of types.
