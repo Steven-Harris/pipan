@@ -121,6 +121,15 @@ function uniqueIds(items: { id: string }[], path: string): void {
   }
 }
 
+function uniqueBy<T>(items: T[], key: (item: T) => string, path: string, what: string): void {
+  const seen = new Set<string>();
+  for (const item of items) {
+    const value = key(item);
+    if (seen.has(value)) bad(`${path} has a duplicate ${what} "${value}"`);
+    seen.add(value);
+  }
+}
+
 // ---- graph ---------------------------------------------------------------------------------
 
 function action(value: unknown, path: string): GraphAction {
@@ -134,8 +143,21 @@ function action(value: unknown, path: string): GraphAction {
   };
 }
 
-function actions(value: unknown, path: string): GraphAction[] | undefined {
-  return value === undefined ? undefined : arr(value, path).map((a, i) => action(a, `${path}[${i}]`));
+/** Graph actions are buttons. A later action that repeats an id is dropped, not an error. */
+function actions(value: unknown, path: string, notices: string[], where: string): GraphAction[] | undefined {
+  if (value === undefined) return undefined;
+  const seen = new Set<string>();
+  const kept: GraphAction[] = [];
+  for (const [i, a] of arr(value, path).entries()) {
+    const item = action(a, `${path}[${i}]`);
+    if (seen.has(item.id)) {
+      notices.push(`Dropped a duplicate action "${item.id}" on ${where}.`);
+      continue;
+    }
+    seen.add(item.id);
+    kept.push(item);
+  }
+  return kept;
 }
 
 function detail(value: unknown): NodeDetail | undefined {
@@ -159,10 +181,11 @@ function detail(value: unknown): NodeDetail | undefined {
   };
 }
 
-function graphNode(value: unknown, path: string): GraphNode {
+function graphNode(value: unknown, path: string, notices: string[]): GraphNode {
   const raw = rec(value, path);
+  const id = nonEmpty(raw.id, `${path}.id`);
   return {
-    id: nonEmpty(raw.id, `${path}.id`),
+    id,
     label: str(raw.label, `${path}.label`),
     kind: optStr(raw.kind),
     tone: optOneOf(raw.tone, TONES),
@@ -170,7 +193,7 @@ function graphNode(value: unknown, path: string): GraphNode {
     visits: optNum(raw.visits),
     group: optStr(raw.group),
     detail: detail(raw.detail),
-    actions: actions(raw.actions, `${path}.actions`)
+    actions: actions(raw.actions, `${path}.actions`, notices, `node "${id}"`)
   };
 }
 
@@ -178,7 +201,7 @@ export function validateGraph(data: unknown): Validated<GraphState> {
   return run((notices) => {
     const raw = rec(data, 'graph');
     const id = nonEmpty(raw.id, 'graph.id');
-    let nodes = arr(raw.nodes, 'graph.nodes').map((n, i) => graphNode(n, `graph.nodes[${i}]`));
+    let nodes = arr(raw.nodes, 'graph.nodes').map((n, i) => graphNode(n, `graph.nodes[${i}]`, notices));
     uniqueIds(nodes, 'graph.nodes');
     if (nodes.length > MAX_GRAPH_NODES) {
       notices.push(`Showing the first ${MAX_GRAPH_NODES} of ${nodes.length} nodes.`);
@@ -216,7 +239,7 @@ export function validateGraph(data: unknown): Validated<GraphState> {
       active: Array.isArray(raw.active)
         ? raw.active.filter((a): a is string => typeof a === 'string' && nodeIds.has(a))
         : undefined,
-      actions: actions(raw.actions, 'graph.actions'),
+      actions: actions(raw.actions, 'graph.actions', notices, 'the graph'),
       note: optStr(raw.note)
     };
   });
@@ -387,26 +410,23 @@ export function validateReview(data: unknown): Validated<ReviewRequest> {
       if (files.length === 0) bad('review.subject.files must not be empty');
       if (files.length > MAX_REVIEW_FILES) bad(`review has more than ${MAX_REVIEW_FILES} files`);
       const counter = { lines: 0 };
-      subject = {
-        type: 'diff',
-        label: optStr(subjectRaw.label),
-        files: files.map((f, i) => diffFile(f, `review.subject.files[${i}]`, counter))
-      };
+      const diffFiles = files.map((f, i) => diffFile(f, `review.subject.files[${i}]`, counter));
+      uniqueBy(diffFiles, (f) => f.path, 'review.subject.files', 'path');
+      subject = { type: 'diff', label: optStr(subjectRaw.label), files: diffFiles };
     } else if (subjectRaw.type === 'document') {
       const documents = arr(subjectRaw.documents, 'review.subject.documents');
       if (documents.length === 0) bad('review.subject.documents must not be empty');
       if (documents.length > MAX_REVIEW_FILES) bad(`review has more than ${MAX_REVIEW_FILES} documents`);
-      subject = {
-        type: 'document',
-        documents: documents.map((d, i): ReviewDocument => {
+      const docs = documents.map((d, i): ReviewDocument => {
           const doc = rec(d, `review.subject.documents[${i}]`);
           return {
             path: nonEmpty(doc.path, `review.subject.documents[${i}].path`),
             text: str(doc.text, `review.subject.documents[${i}].text`),
             format: oneOf(doc.format, ['markdown', 'text'] as const, 'markdown')
           };
-        })
-      };
+        });
+      uniqueBy(docs, (d) => d.path, 'review.subject.documents', 'path');
+      subject = { type: 'document', documents: docs };
     } else {
       return bad(`review.subject.type "${String(subjectRaw.type)}" is not a known subject`);
     }
@@ -416,12 +436,14 @@ export function validateReview(data: unknown): Validated<ReviewRequest> {
     const choices = arr(raw.choices, 'review.choices').map((c, i) => reviewChoice(c, `review.choices[${i}]`));
     if (choices.length === 0) bad('review.choices must have at least one choice');
     uniqueIds(choices, 'review.choices');
+    const reviewComments = comments.map((c, i) => reviewComment(c, `review.comments[${i}]`));
+    uniqueIds(reviewComments, 'review.comments');
 
     return {
       title: str(raw.title, 'review.title'),
       body: optStr(raw.body),
       subject,
-      comments: comments.map((c, i) => reviewComment(c, `review.comments[${i}]`)),
+      comments: reviewComments,
       choices,
       commentHint: optStr(raw.commentHint)
     };

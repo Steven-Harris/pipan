@@ -88,6 +88,6 @@ PiPan stores application metadata in a local SQLite file (`pipan.db`).
 
 - **Sessions**: Session ID, custom name, project folder path, model ID, token usage, cost, and timestamps.
 - **Node Positions**: Custom (X, Y) coordinates for the DAG canvas, saved per session and layout direction.
-- **Channel Node Positions**: Custom coordinates for graph panels that extensions publish, saved per session, graph and node.
+- **Channel Node Positions**: Custom coordinates for graph panels that extensions publish, saved per session, channel, topic, graph and node.
 - **GitHub Views**: Saved pull request filter queries.
 - **Tags & Metadata**: Tags and group assignments for organizing large lists of sessions.

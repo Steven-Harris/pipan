@@ -20,7 +20,7 @@
   import { edgeIds, layoutChannelGraph, structureKey, type XY } from '#lib/channels/graph-layout.ts';
   import { TONE_CLASSES, STATUS_STYLES, resolveTone } from '#lib/channels/graph-style.ts';
   import type { GraphAction, GraphNode, GraphState } from '#lib/channels/types.ts';
-  import { channelGraphLayout } from '#lib/stores/channel-graph-layout.svelte.ts';
+  import { channelGraphLayout, type GraphRef } from '#lib/stores/channel-graph-layout.svelte.ts';
   import { channels } from '#lib/stores/channels.svelte.ts';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import ChannelGraphNodeCard from './ChannelGraphNode.svelte';
@@ -37,12 +37,13 @@
   );
   const graph = $derived(published?.data as GraphState | undefined);
   const direction = $derived(graph?.direction ?? 'TB');
-  const pinned = $derived(graph ? channelGraphLayout.positionsFor(sessionId, graph.id) : {});
-  const pinnedCount = $derived(graph ? channelGraphLayout.pinnedCount(sessionId, graph.id) : 0);
-  const ready = $derived(graph ? channelGraphLayout.isReady(sessionId, graph.id) : false);
+  const ref = $derived<GraphRef>({ sessionId, ch, topic, graphId: graph?.id ?? '' });
+  const pinned = $derived(graph ? channelGraphLayout.positionsFor(ref) : {});
+  const pinnedCount = $derived(graph ? channelGraphLayout.pinnedCount(ref) : 0);
+  const ready = $derived(graph ? channelGraphLayout.isReady(ref) : false);
 
   $effect(() => {
-    if (graph && sessionId) void channelGraphLayout.hydrate(sessionId, graph.id);
+    if (graph && sessionId) void channelGraphLayout.hydrate(ref);
   });
 
   // Layout runs when the node or edge set, the direction or the pinned positions change, not
@@ -119,7 +120,7 @@
       moved[n.id] = { x: n.position.x, y: n.position.y };
     }
     dragging.clear();
-    if (graph) channelGraphLayout.pin(sessionId, graph.id, moved);
+    if (graph) channelGraphLayout.pin(ref, moved);
   }
 
   const selectedNode = $derived<GraphNode | undefined>(graph?.nodes.find((n) => n.id === selectedId));
@@ -185,7 +186,7 @@
         {/each}
         <button
           type="button"
-          onclick={() => graph && channelGraphLayout.reset(sessionId, graph.id)}
+          onclick={() => graph && channelGraphLayout.reset(ref)}
           disabled={pinnedCount === 0}
           title={pinnedCount === 0 ? 'No dragged nodes to reset' : `Release ${pinnedCount} dragged nodes`}
           class="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-200 transition hover:bg-zinc-700 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"

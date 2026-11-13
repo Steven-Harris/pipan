@@ -34,11 +34,11 @@
       <p class="mb-1 text-zinc-400">session {sessionId || '(none)'}; host {host ? preview(host) : 'not announced'}</p>
 
       <h3 class="mt-2 font-semibold">State</h3>
-      {#each states as state (state.ch + state.topic)}
+      {#each states as state (`${state.ch}\u0000${state.topic}`)}
         <div class="border-t border-zinc-700 py-1">
           <div>{state.ch} / {state.topic} [{state.primitive}] seq {state.seq ?? '-'}</div>
           <div class="text-zinc-400">{preview(state.data)}</div>
-          {#each state.notices as notice (notice)}
+          {#each state.notices as notice, i (i)}
             <div class="text-amber-400">{notice}</div>
           {/each}
         </div>

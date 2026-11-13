@@ -46,7 +46,7 @@ state("graph", "graph", {
 state("graph", "graph", null); // clear
 ```
 
-Publish on each status change. The host applies at most 10 updates per second. `graph.id` is the key under which users' dragged node positions are saved, so keep it stable for one logical run.
+Publish on each status change. The host applies at most 10 updates per second. `graph.id`, with the channel and topic, is the key under which users' dragged node positions are saved, so keep it stable for one logical run.
 
 ## 3. Ask a question
 

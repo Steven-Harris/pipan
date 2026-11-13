@@ -13,7 +13,7 @@ Conventions: "MUST", "SHOULD" and "MAY" carry their usual meaning. Unknown objec
 - **Host**: the PiPan app (Rust router plus Svelte store and UI).
 - **Channel**: a producer's namespace, written `ch`. It is a dotted lowercase id such as `acme.deploy`. It matches a PiPan plugin id when the producer also ships a plugin. It is self-declared and unauthenticated.
 
-PiPan loads the shim into the primary Pi session of every PiPan-started process. Producer payloads are untrusted data: markdown is sanitized, raw HTML is shown as text, images are not loaded, and links keep only `http`, `https` and `mailto` targets.
+PiPan loads the shim into the primary Pi session of every PiPan-started process. Producer payloads are untrusted data: markdown is rendered, raw HTML is shown as text, images are not loaded, and links keep only `http`, `https` and `mailto` targets. The rendered HTML is then sanitized with DOMPurify against a strict allowlist (no scripts, styles, forms, frames, `data-` or event attributes), so the rendered output contains only text formatting, lists, tables, code and links.
 
 ## 2. Producer API (Pi event bus)
 
@@ -126,9 +126,10 @@ interface GraphAction {
 Rules:
 - `kind` has no fixed vocabulary. The host assigns a stable color and glyph per distinct `kind` string within a graph and uses `tone` when given. Unknown kinds render as neutral.
 - A graph is replaced wholesale on every publish (no deltas in v1). Producers SHOULD publish on each status change, and MAY coalesce at up to 10 per second.
-- Node positions are computed by the host (Dagre). The host persists manual positions per `(session, graph.id, node.id)`.
+- Node positions are computed by the host (Dagre). The host persists manual positions per `(session, channel, topic, graph.id, node.id)`, so graphs from different channels or topics never share positions. Two graphs from one channel and topic that share a `graph.id` do.
 - Actions are sent as intents with `name = "graph.action"`; the host never executes anything itself.
 - Node count over the limit: the host shows the first 500 in order and a notice.
+- Action ids MUST be unique within one list (graph-level actions, or one node's actions). The host keeps the first action with an id, drops later ones, and shows a notice.
 
 ## 5. Primitive: `review`
 
@@ -211,6 +212,7 @@ Rules:
 - Both subjects share the comment model. For documents the host renders markdown with source line numbers, and a comment anchors to the source line range of the block it was written on.
 - A user answer MUST include a `choice`. Closing the dialog without a choice sends a cancel (no answer).
 - A review with no files or documents is a producer error. The producer SHOULD skip the request instead.
+- File `path`s MUST be unique within a diff review, document `path`s within a document review, and comment `id`s within a review. A request that repeats one is rejected as a producer error, as is a repeated form field, form action, form option value or review choice id.
 
 ## 6. Primitive: `form`
 

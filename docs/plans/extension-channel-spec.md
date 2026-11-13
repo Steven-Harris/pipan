@@ -122,9 +122,10 @@ interface GraphAction {
 Rules:
 - `kind` has no fixed vocabulary. The host assigns a stable color and glyph per distinct `kind` string within a graph and uses `tone` when given. Unknown kinds render as neutral.
 - A graph is replaced wholesale on every publish (no deltas in v1). Producers SHOULD publish on each status change, and MAY coalesce at up to 10 per second.
-- Node positions are computed by the host (Dagre). The host persists manual positions per `(session, graph.id, node.id)`.
+- Node positions are computed by the host (Dagre). The host persists manual positions per `(session, channel, topic, graph.id, node.id)`, so graphs from different channels or topics never share positions. Two graphs from one channel and topic that share a `graph.id` do.
 - Actions are sent as intents with `name = "graph.action"`; the host never executes anything itself.
 - Node count over the limit: the host shows the first 500 in order and a notice.
+- Action ids MUST be unique within one list (graph-level actions, or one node's actions). The host keeps the first action with an id, drops later ones, and shows a notice.
 
 ## 5. Primitive: `review`
 
@@ -207,6 +208,7 @@ Rules:
 - Both subjects share the comment model. For documents the host renders markdown with source line numbers, and a comment anchors to the source line range of the block it was written on.
 - A user answer MUST include a `choice`. Closing the dialog without a choice sends a cancel (no answer).
 - A review with no files or documents is a producer error. The producer SHOULD skip the request instead.
+- File `path`s MUST be unique within a diff review, document `path`s within a document review, and comment `id`s within a review. A request that repeats one is rejected as a producer error, as is a repeated form field, form action, form option value or review choice id.
 
 ## 6. Primitive: `form`
 

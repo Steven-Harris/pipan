@@ -218,3 +218,90 @@ describe('dispatch', () => {
     expect(validateRequest('mystery', 5)).toEqual({ ok: true, value: 5, notices: [] });
   });
 });
+
+describe('unique keys', () => {
+  const line = { kind: 'ctx', text: 'x', oldLine: 1, newLine: 1 };
+  const file = (path: string) => ({ path, status: 'modified', hunks: [{ header: '@@', lines: [line] }] });
+  const choices = [{ id: 'approve', label: 'Approve' }];
+  const comment = (id: string) => ({
+    id,
+    path: 'a.ts',
+    line: 1,
+    side: 'new',
+    text: 'note',
+    author: 'user',
+    status: 'open'
+  });
+
+  it('rejects two diff files with the same path', () => {
+    const result = validateReview({
+      title: 'R',
+      subject: { type: 'diff', files: [file('a.ts'), file('a.ts')] },
+      choices
+    });
+    expect(result).toMatchObject({ ok: false });
+    expect(!result.ok && result.error).toContain('duplicate path "a.ts"');
+  });
+
+  it('rejects two documents with the same path', () => {
+    const result = validateReview({
+      title: 'R',
+      subject: {
+        type: 'document',
+        documents: [
+          { path: 'a.md', text: 'a' },
+          { path: 'a.md', text: 'b' }
+        ]
+      },
+      choices
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects two comments with the same id', () => {
+    const result = validateReview({
+      title: 'R',
+      subject: { type: 'diff', files: [file('a.ts')] },
+      comments: [comment('c1'), comment('c1')],
+      choices
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('drops a repeated graph action id and says so, keeping the first', () => {
+    const result = validateGraph({
+      id: 'g',
+      nodes: [
+        node('a', {
+          actions: [
+            { id: 'go', label: 'First' },
+            { id: 'go', label: 'Second' },
+            { id: 'stop', label: 'Stop' }
+          ]
+        })
+      ],
+      edges: [],
+      actions: [
+        { id: 'pause', label: 'Pause' },
+        { id: 'pause', label: 'Pause again' }
+      ]
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.nodes[0].actions?.map((a) => a.label)).toEqual(['First', 'Stop']);
+    expect(result.value.actions?.map((a) => a.label)).toEqual(['Pause']);
+    expect(result.notices).toHaveLength(2);
+    expect(result.notices.join(' ')).toContain('node "a"');
+    expect(result.notices.join(' ')).toContain('the graph');
+  });
+
+  it('accepts an idle graph with no nodes and a start action', () => {
+    const result = validateGraph({
+      id: 'idle',
+      nodes: [],
+      edges: [],
+      actions: [{ id: 'start', label: 'Start' }]
+    });
+    expect(result.ok && result.value.actions?.length).toBe(1);
+  });
+});

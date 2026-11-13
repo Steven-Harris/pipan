@@ -94,7 +94,9 @@ PiPan stores application state and metadata in a SQLite database located at `<ap
     - `usage_ledger`: Stores `session_id`, `message_id`, `timestamp`, `provider`, `model`, `input`, `output`, `cache_read`, `cache_write`, `cost_usd`, `cwd`.
     - `usage_file_checkpoints`: Tracks file scan positions (`path`, `mtime`, `byte_offset`) for incremental parsing of Pi transcript files.
   - **v5 (Extension Channel Layouts)**:
-    - `channel_node_positions`: Stores `session_id` (foreign key with cascade delete), `graph_id`, `node_id`, `x`, `y`, `pinned`.
+    - `channel_node_positions`: Stores manual node positions of extension channel graphs.
+  - **v6 (Channel Layout Keys)**:
+    - `channel_node_positions` is rebuilt with `session_id` (foreign key with cascade delete), `ch`, `topic`, `graph_id`, `node_id`, `x`, `y`, `pinned`. Rows saved under v5 had no channel or topic and are dropped.
 - **Session Data vs. Transcript Files**:
   - `pipan.db` stores session metadata, graph layouts, PR views, and usage metrics.
   - Pi CLI stores raw message conversations, run states, and tool execution logs directly in its `.jsonl` transcript file (`session_file_path`).
