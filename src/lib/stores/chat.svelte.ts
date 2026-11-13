@@ -920,17 +920,20 @@ class ChatStore {
     const effectiveMessage = trimmed || '(Attached image)';
 
     if (!this.isAgentRunning) {
-      // Optimistically show user message; reconciled when `message_start` (role: "user") arrives
+      // Optimistically show user message; reconciled when `message_start` (role: "user") arrives,
+      // or by the prompt's response when Pi handles the prompt itself (an extension command).
+      const promptId = makeId();
       this.messages.push({
         id: makeId(),
         role: 'user',
         timestamp: Date.now(),
         blocks: [{ type: 'text', text: effectiveMessage, isComplete: true }],
-        isOptimistic: true
+        isOptimistic: true,
+        promptId
       });
 
       await this.sendCommand({
-        id: makeId(),
+        id: promptId,
         type: 'prompt',
         message: effectiveMessage,
         ...(hasImages ? { images } : {})
@@ -1559,7 +1562,24 @@ class ChatStore {
     }
   }
 
+  /**
+   * Settles the optimistic user message of a `prompt` command. A prompt that Pi handled itself,
+   * such as an extension command, never produces a user message, and a rejected prompt was not
+   * sent, so neither may stay marked as sending.
+   */
+  private settlePromptResponse(event: PiRpcEvent): void {
+    if (event.command !== 'prompt' || typeof event.id !== 'string') return;
+    const index = this.messages.findIndex((m) => m.promptId === event.id);
+    if (index < 0) return;
+    if (event.success === false) {
+      this.messages.splice(index, 1);
+    } else if (event.data?.disposition === 'handled') {
+      this.messages[index].isOptimistic = false;
+    }
+  }
+
   private handleResponseEvent(event: PiRpcEvent): void {
+    this.settlePromptResponse(event);
     if (event.success === false) {
       if (
         event.command === 'get_available_models' ||

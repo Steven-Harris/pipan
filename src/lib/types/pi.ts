@@ -338,6 +338,8 @@ export interface ChatMessage {
   errorMessage?: string;
   usage?: TokenUsage;
   isOptimistic?: boolean;
+  /** Id of the `prompt` command that produced this optimistic message, to match its response. */
+  promptId?: string;
 }
 
 export interface SessionHistoryEntry {
