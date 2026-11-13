@@ -1,0 +1,838 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/ChannelPayloads",
+  "definitions": {
+    "ChannelPayloads": {
+      "type": "object",
+      "properties": {
+        "hostInfo": {
+          "$ref": "#/definitions/HostInfo",
+          "description": "The reply to `pipan:hello`."
+        },
+        "graph": {
+          "$ref": "#/definitions/GraphState",
+          "description": "The `payload` of a `pipan:state` event whose primitive is `graph`."
+        },
+        "form": {
+          "$ref": "#/definitions/FormRequest",
+          "description": "The `payload` of a `pipan:request` with `kind: \"form\"`."
+        },
+        "formAnswer": {
+          "$ref": "#/definitions/FormAnswer",
+          "description": "What `reply` receives for a form request."
+        },
+        "review": {
+          "$ref": "#/definitions/ReviewRequest",
+          "description": "The `payload` of a `pipan:request` with `kind: \"review\"`."
+        },
+        "reviewAnswer": {
+          "$ref": "#/definitions/ReviewAnswer",
+          "description": "What `reply` receives for a review request."
+        }
+      },
+      "required": [
+        "hostInfo",
+        "graph",
+        "form",
+        "formAnswer",
+        "review",
+        "reviewAnswer"
+      ]
+    },
+    "HostInfo": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "number",
+          "const": 1
+        },
+        "host": {
+          "type": "string",
+          "const": "pipan"
+        },
+        "primitives": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      },
+      "required": [
+        "protocol",
+        "host",
+        "primitives"
+      ]
+    },
+    "GraphState": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "subtitle": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "TB",
+            "LR"
+          ]
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphEdge"
+          }
+        },
+        "active": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphAction"
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "nodes",
+        "edges"
+      ]
+    },
+    "GraphNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "tone": {
+          "$ref": "#/definitions/Tone"
+        },
+        "status": {
+          "$ref": "#/definitions/NodeStatus"
+        },
+        "visits": {
+          "type": "number"
+        },
+        "group": {
+          "type": "string"
+        },
+        "detail": {
+          "$ref": "#/definitions/NodeDetail"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GraphAction"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "status"
+      ]
+    },
+    "Tone": {
+      "type": "string",
+      "enum": [
+        "neutral",
+        "cyan",
+        "amber",
+        "violet",
+        "green",
+        "red",
+        "blue"
+      ]
+    },
+    "NodeStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "waiting",
+        "done",
+        "failed",
+        "skipped"
+      ]
+    },
+    "NodeDetail": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "markdown": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "value"
+            ]
+          }
+        },
+        "startedAt": {
+          "type": "number"
+        },
+        "endedAt": {
+          "type": "number"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "costUsd": {
+          "type": "number"
+        },
+        "tokens": {
+          "type": "number"
+        }
+      }
+    },
+    "GraphAction": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "confirm": {
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/definitions/ActionStyle"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ]
+    },
+    "ActionStyle": {
+      "type": "string",
+      "enum": [
+        "default",
+        "primary",
+        "danger"
+      ]
+    },
+    "GraphEdge": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "taken": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
+    },
+    "FormRequest": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FormField"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FormAction"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "actions"
+      ]
+    },
+    "FormField": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "select"
+            },
+            "label": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/FormOption"
+              }
+            },
+            "default": {
+              "type": "string"
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "requiredFor": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Action ids that `required` applies to. Absent means every action that validates."
+            },
+            "exclusiveWith": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ids of fields that are alternatives to this one. Filling this field clears them, and one of them filled meets `required`."
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "label",
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "multiselect"
+            },
+            "label": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/FormOption"
+              }
+            },
+            "default": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "requiredFor": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Action ids that `min` applies to. Absent means every action that validates."
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "label",
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "label": {
+              "type": "string"
+            },
+            "multiline": {
+              "type": "boolean"
+            },
+            "placeholder": {
+              "type": "string"
+            },
+            "default": {
+              "type": "string"
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "requiredFor": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Action ids that `required` applies to. Absent means every action that validates."
+            },
+            "exclusiveWith": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ids of fields that are alternatives to this one. Filling this field clears them, and one of them filled meets `required`."
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "label"
+          ]
+        }
+      ]
+    },
+    "FormOption": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "label"
+      ]
+    },
+    "FormAction": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/definitions/ActionStyle"
+        },
+        "skipValidation": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ]
+    },
+    "FormAnswer": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "action",
+        "values"
+      ]
+    },
+    "ReviewRequest": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DiffSubject"
+            },
+            {
+              "$ref": "#/definitions/DocumentSubject"
+            }
+          ]
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReviewComment"
+          }
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReviewChoice"
+          }
+        },
+        "commentHint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "subject",
+        "comments",
+        "choices"
+      ]
+    },
+    "DiffSubject": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "diff"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DiffFile"
+          }
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "files"
+      ]
+    },
+    "DiffFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "oldPath": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "added",
+            "modified",
+            "deleted",
+            "renamed",
+            "untracked"
+          ]
+        },
+        "binary": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "hunks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DiffHunk"
+          }
+        }
+      },
+      "required": [
+        "path",
+        "status",
+        "hunks"
+      ]
+    },
+    "DiffHunk": {
+      "type": "object",
+      "properties": {
+        "header": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DiffLine"
+          }
+        }
+      },
+      "required": [
+        "header",
+        "lines"
+      ]
+    },
+    "DiffLine": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "add",
+            "del",
+            "ctx"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "oldLine": {
+          "type": "number"
+        },
+        "newLine": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ]
+    },
+    "DocumentSubject": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "document"
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReviewDocument"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "documents"
+      ]
+    },
+    "ReviewDocument": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "text"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "text"
+      ]
+    },
+    "ReviewComment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "old",
+            "new"
+          ]
+        },
+        "line": {
+          "type": "number"
+        },
+        "endLine": {
+          "type": "number"
+        },
+        "snippet": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/CommentStatus"
+        },
+        "outdated": {
+          "type": "boolean"
+        },
+        "replies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "author": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "agent"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "author",
+              "text"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "side",
+        "line",
+        "text",
+        "status"
+      ]
+    },
+    "CommentStatus": {
+      "type": "string",
+      "enum": [
+        "open",
+        "addressed",
+        "declined",
+        "dismissed"
+      ]
+    },
+    "ReviewChoice": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/definitions/ActionStyle"
+        },
+        "requiresComment": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ]
+    },
+    "ReviewAnswer": {
+      "type": "object",
+      "properties": {
+        "choice": {
+          "type": "string"
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReviewComment"
+          }
+        },
+        "touched": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "choice",
+        "comments",
+        "touched"
+      ]
+    }
+  },
+  "title": "PiPan extension channel payloads"
+}

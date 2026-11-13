@@ -3,12 +3,15 @@
   import { SvelteFlowProvider } from '@xyflow/svelte';
   import { workspaceStore, type PanelId } from '#lib/stores/workspace.svelte.ts';
   import { getPanelDefinition, PANELS } from '#lib/workspace/panels.ts';
+  import { channelAttention } from '#lib/stores/channel-attention.svelte.ts';
   import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
   import FlowCanvas from './FlowCanvas.svelte';
   import FileExplorerPanel from './FileExplorerPanel.svelte';
   import PanelPlaceholder from './PanelPlaceholder.svelte';
   import PullRequestsPanel from './PullRequestsPanel.svelte';
   import TerminalPanel from './TerminalPanel.svelte';
+  import GraphPanel from './channels/GraphPanel.svelte';
+  import { parseGraphPanelId } from '#lib/channels/panels.ts';
   import ExtensionContributionHost from './ExtensionContributionHost.svelte';
 
   let showAddDropdown = $state(false);
@@ -101,6 +104,14 @@
             >
               <Icon class="h-3.5 w-3.5 {active ? 'text-indigo-400' : ''}" />
               <span>{def.label}</span>
+              {#if channelAttention.needsAttention(id)}
+                <span
+                  class="h-1.5 w-1.5 rounded-full bg-amber-400"
+                  title="Waiting for you"
+                  role="img"
+                  aria-label="Waiting for you"
+                ></span>
+              {/if}
             </button>
             <button
               type="button"
@@ -211,6 +222,11 @@
         <FileExplorerPanel />
       {:else if id === 'prs' && extensionRegistry.isPanelEnabled('prs')}
         <PullRequestsPanel />
+      {:else if parseGraphPanelId(id) && extensionRegistry.isPanelEnabled(id)}
+        {@const target = parseGraphPanelId(id)!}
+        <SvelteFlowProvider>
+          <GraphPanel ch={target.ch} topic={target.topic} />
+        </SvelteFlowProvider>
       {:else if extensionRegistry.contributedPanelsById[id]}
         {@const contributed = extensionRegistry.contributedPanelsById[id]}
         <ExtensionContributionHost

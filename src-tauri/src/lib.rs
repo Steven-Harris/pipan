@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod approval;
 pub mod auth;
+pub mod channel;
 pub mod db;
 pub mod doctor;
 pub mod extensions;
@@ -27,8 +28,9 @@ use auth::{
     remove_pi_provider_auth, save_custom_model_endpoint, save_pi_provider_auth, save_pi_settings,
 };
 use db::{
-    Database, clear_node_positions, delete_github_view, get_graph_direction, list_github_views,
-    load_node_positions, save_github_view, save_node_positions, set_graph_direction,
+    Database, clear_channel_node_positions, clear_node_positions, delete_github_view,
+    get_graph_direction, list_github_views, load_channel_node_positions, load_node_positions,
+    save_channel_node_positions, save_github_view, save_node_positions, set_graph_direction,
 };
 use doctor::{fix_doctor_issue, run_doctor};
 use extensions::{
@@ -124,6 +126,9 @@ pub fn run() {
             get_graph_direction,
             set_graph_direction,
             load_node_positions,
+            load_channel_node_positions,
+            save_channel_node_positions,
+            clear_channel_node_positions,
             save_node_positions,
             clear_node_positions,
             list_github_views,

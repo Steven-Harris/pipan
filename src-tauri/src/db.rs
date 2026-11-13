@@ -99,6 +99,31 @@ const MIGRATIONS: &[&str] = &[
         mtime        INTEGER NOT NULL DEFAULT 0,
         byte_offset  INTEGER NOT NULL DEFAULT 0
     );",
+    // v5: manual node positions for extension channel graphs, per (session, graph, node).
+    "CREATE TABLE channel_node_positions (
+        session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        graph_id    TEXT NOT NULL,
+        node_id     TEXT NOT NULL,
+        x           REAL NOT NULL,
+        y           REAL NOT NULL,
+        pinned      INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (session_id, graph_id, node_id)
+    );",
+    // v6: channel graph positions are keyed by channel and topic as well, so graphs from
+    // different producers or topics cannot share positions. v5 rows carry neither, so they
+    // are dropped; positions only matter for the life of a run.
+    "DROP TABLE channel_node_positions;
+    CREATE TABLE channel_node_positions (
+        session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        ch          TEXT NOT NULL,
+        topic       TEXT NOT NULL,
+        graph_id    TEXT NOT NULL,
+        node_id     TEXT NOT NULL,
+        x           REAL NOT NULL,
+        y           REAL NOT NULL,
+        pinned      INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (session_id, ch, topic, graph_id, node_id)
+    );",
 ];
 
 /// A saved custom GitHub PR search view persisted in `github_views`.
@@ -247,6 +272,106 @@ impl Database {
             }
         }
         tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Saved manual positions of one channel graph.
+    pub fn load_channel_node_positions(
+        &self,
+        session_id: &str,
+        ch: &str,
+        topic: &str,
+        graph_id: &str,
+    ) -> Result<HashMap<String, NodePosition>, String> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT node_id, x, y, pinned FROM channel_node_positions
+                 WHERE session_id = ?1 AND ch = ?2 AND topic = ?3 AND graph_id = ?4",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![session_id, ch, topic, graph_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    NodePosition {
+                        x: row.get(1)?,
+                        y: row.get(2)?,
+                        pinned: row.get::<_, i64>(3)? != 0,
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<HashMap<_, _>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Upserts channel graph positions; nodes not mentioned keep what they had.
+    pub fn save_channel_node_positions(
+        &self,
+        session_id: &str,
+        ch: &str,
+        topic: &str,
+        graph_id: &str,
+        positions: &HashMap<String, NodePosition>,
+    ) -> Result<(), String> {
+        const MAX_POSITIONS: usize = 2000;
+        const MAX_KEY_LEN: usize = 512;
+        if positions.len() > MAX_POSITIONS {
+            return Err(format!("Too many node positions (max {MAX_POSITIONS})"));
+        }
+        if [ch, topic, graph_id]
+            .iter()
+            .any(|k| k.len() > MAX_KEY_LEN)
+            || positions.keys().any(|k| k.len() > MAX_KEY_LEN)
+        {
+            return Err("Channel graph key too long".to_string());
+        }
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR IGNORE INTO sessions (id) VALUES (?1)",
+            params![session_id],
+        )
+        .map_err(|e| e.to_string())?;
+        {
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO channel_node_positions
+                        (session_id, ch, topic, graph_id, node_id, x, y, pinned)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                     ON CONFLICT(session_id, ch, topic, graph_id, node_id)
+                     DO UPDATE SET x = ?6, y = ?7, pinned = ?8",
+                )
+                .map_err(|e| e.to_string())?;
+            for (node_id, p) in positions {
+                if !p.x.is_finite() || !p.y.is_finite() {
+                    continue;
+                }
+                stmt.execute(params![
+                    session_id, ch, topic, graph_id, node_id, p.x, p.y, p.pinned
+                ])
+                .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Removes the saved positions of one channel graph.
+    pub fn clear_channel_node_positions(
+        &self,
+        session_id: &str,
+        ch: &str,
+        topic: &str,
+        graph_id: &str,
+    ) -> Result<(), String> {
+        let conn = self.lock();
+        conn.execute(
+            "DELETE FROM channel_node_positions
+             WHERE session_id = ?1 AND ch = ?2 AND topic = ?3 AND graph_id = ?4",
+            params![session_id, ch, topic, graph_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Removes saved coordinates for one direction only.
@@ -419,6 +544,55 @@ pub async fn clear_node_positions(
     tokio::task::spawn_blocking(move || db.clear_node_positions(&session_id, &direction))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn load_channel_node_positions(
+    db: State<'_, Database>,
+    session_id: String,
+    ch: String,
+    topic: String,
+    graph_id: String,
+) -> Result<HashMap<String, NodePosition>, String> {
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        db.load_channel_node_positions(&session_id, &ch, &topic, &graph_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn save_channel_node_positions(
+    db: State<'_, Database>,
+    session_id: String,
+    ch: String,
+    topic: String,
+    graph_id: String,
+    positions: HashMap<String, NodePosition>,
+) -> Result<(), String> {
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        db.save_channel_node_positions(&session_id, &ch, &topic, &graph_id, &positions)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn clear_channel_node_positions(
+    db: State<'_, Database>,
+    session_id: String,
+    ch: String,
+    topic: String,
+    graph_id: String,
+) -> Result<(), String> {
+    let db = db.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        db.clear_channel_node_positions(&session_id, &ch, &topic, &graph_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -628,13 +802,215 @@ mod tests {
     }
 
     #[test]
+    fn channel_positions_do_not_share_across_channels_or_topics_with_one_graph_id() {
+        let db = Database::open_in_memory().unwrap();
+        let pos = |x, y| NodePosition { x, y, pinned: true };
+        let save = |ch: &str, topic: &str, p: NodePosition| {
+            db.save_channel_node_positions(
+                "s1",
+                ch,
+                topic,
+                "run",
+                &HashMap::from([("n".into(), p)]),
+            )
+            .unwrap()
+        };
+        save("acme.one", "graph", pos(1.0, 1.0));
+        save("acme.one", "graph.1", pos(2.0, 2.0));
+        save("acme.two", "graph", pos(3.0, 3.0));
+        let load = |ch: &str, topic: &str| {
+            db.load_channel_node_positions("s1", ch, topic, "run")
+                .unwrap()["n"]
+                .clone()
+        };
+        assert_eq!(load("acme.one", "graph"), pos(1.0, 1.0));
+        assert_eq!(load("acme.one", "graph.1"), pos(2.0, 2.0));
+        assert_eq!(load("acme.two", "graph"), pos(3.0, 3.0));
+
+        db.clear_channel_node_positions("s1", "acme.one", "graph", "run")
+            .unwrap();
+        assert!(
+            db.load_channel_node_positions("s1", "acme.one", "graph", "run")
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(load("acme.one", "graph.1"), pos(2.0, 2.0));
+    }
+
+    #[test]
+    fn migrating_v5_replaces_channel_positions_with_the_keyed_table() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.lock();
+        let cols: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('channel_node_positions') ORDER BY cid")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            cols,
+            [
+                "session_id",
+                "ch",
+                "topic",
+                "graph_id",
+                "node_id",
+                "x",
+                "y",
+                "pinned"
+            ]
+        );
+    }
+
+    #[test]
+    fn channel_positions_round_trip_per_graph_and_cascade_with_the_session() {
+        let db = Database::open_in_memory().unwrap();
+        let pos = |x, y| NodePosition { x, y, pinned: true };
+        let save = |ch: &str, topic: &str, graph: &str, p: NodePosition| {
+            db.save_channel_node_positions(
+                "s1",
+                ch,
+                topic,
+                graph,
+                &HashMap::from([("a".into(), p)]),
+            )
+            .unwrap()
+        };
+        save("c", "graph", "g1", pos(1.0, 2.0));
+        save("c", "graph", "g2", pos(9.0, 9.0));
+        save("c", "graph", "g1", pos(3.0, 4.0));
+        db.save_channel_node_positions(
+            "s1",
+            "c",
+            "graph",
+            "g1",
+            &HashMap::from([("bad".into(), pos(f64::NAN, 0.0))]),
+        )
+        .unwrap();
+
+        let g1 = db
+            .load_channel_node_positions("s1", "c", "graph", "g1")
+            .unwrap();
+        assert_eq!(g1.len(), 1);
+        assert_eq!(g1["a"], pos(3.0, 4.0));
+        assert_eq!(
+            db.load_channel_node_positions("s1", "c", "graph", "g2")
+                .unwrap()["a"],
+            pos(9.0, 9.0)
+        );
+        assert!(
+            db.load_channel_node_positions("s2", "c", "graph", "g1")
+                .unwrap()
+                .is_empty()
+        );
+        // The direction-keyed table is untouched.
+        assert!(db.load_node_positions("s1", "TB").unwrap().is_empty());
+
+        db.clear_channel_node_positions("s1", "c", "graph", "g1")
+            .unwrap();
+        assert!(
+            db.load_channel_node_positions("s1", "c", "graph", "g1")
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            db.load_channel_node_positions("s1", "c", "graph", "g2")
+                .unwrap()
+                .len(),
+            1
+        );
+
+        db.lock()
+            .execute("DELETE FROM sessions WHERE id = 's1'", [])
+            .unwrap();
+        assert!(
+            db.load_channel_node_positions("s1", "c", "graph", "g2")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn migrates_v5_database_to_v6_dropping_unkeyed_channel_positions() {
+        let dir = std::env::temp_dir().join(format!("pipan-v6-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pipan.db");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..5] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 5i64).unwrap();
+            conn.execute("INSERT INTO sessions (id) VALUES ('old')", [])
+                .unwrap();
+            conn.execute(
+                "INSERT INTO channel_node_positions (session_id, graph_id, node_id, x, y) VALUES ('old', 'g', 'n', 1, 2)",
+                [],
+            )
+            .unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        assert!(
+            db.load_channel_node_positions("old", "c", "graph", "g")
+                .unwrap()
+                .is_empty()
+        );
+        let version: i64 = db
+            .lock()
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 6);
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migrates_v4_database_to_v5_without_losing_data() {
+        let dir = std::env::temp_dir().join(format!("pipan-v5-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pipan.db");
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..4] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 4i64).unwrap();
+            conn.execute("INSERT INTO sessions (id) VALUES ('old')", [])
+                .unwrap();
+            conn.execute(
+                "INSERT INTO node_positions (session_id, direction, node_id, x, y) VALUES ('old', 'TB', 'n', 1, 2)",
+                [],
+            )
+            .unwrap();
+            drop(conn.transaction().unwrap());
+        }
+        let db = Database::open(&path).unwrap();
+        let version: i64 = db
+            .lock()
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, MIGRATIONS.len() as i64);
+        assert_eq!(db.load_node_positions("old", "TB").unwrap().len(), 1);
+        assert!(
+            db.load_channel_node_positions("old", "c", "graph", "g")
+                .unwrap()
+                .is_empty()
+        );
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn migrates_to_v4_and_supports_usage_ledger() {
         let db = Database::open_in_memory().unwrap();
         let version: i64 = db
             .lock()
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 6);
 
         // Verify usage_ledger and usage_file_checkpoints exist and accept rows
         let conn = db.lock();

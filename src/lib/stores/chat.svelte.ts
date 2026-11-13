@@ -1,6 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
+import { channelPlugins } from '#lib/channels/plugin-api.svelte.ts';
+import { customMessageView } from '#lib/chat/custom-messages.ts';
+import { channels } from '#lib/stores/channels.svelte.ts';
+import { notifications } from '#lib/stores/notifications.svelte.ts';
 import type {
   ChatMessage,
   ContentBlock,
@@ -229,7 +233,13 @@ class ChatStore {
     if (this.initialized) return;
     this.initialized = true;
 
+    channels.configure({ send: (command) => invoke('send_pi_command', { command }) });
+    channelPlugins.configure({ activeSession: () => this.activeSessionId ?? '' });
+
     const unlistenEvent = await listen<PiRpcEvent>('pi:event', (event) => {
+      // Extension channel traffic (shim announce, state, requests) is handled by its own store.
+      if (channels.handleEvent(this.activeSessionId ?? '', event.payload)) return;
+      if (notifications.handleEvent(this.activeSessionId ?? '', event.payload)) return;
       this.handlePiEvent(event.payload);
       this.syncActiveSessionHistory();
       if (
@@ -255,6 +265,10 @@ class ChatStore {
       }
       if (event.payload.error) {
         this.lastError = event.payload.error;
+      }
+      if (event.payload.state !== 'running') {
+        // Pending channel requests and state die with the Pi process.
+        channels.processExited();
       }
       if (event.payload.state === 'disconnected' || event.payload.state === 'error') {
         this.isAgentRunning = false;
@@ -290,6 +304,7 @@ class ChatStore {
         this.recordSessionStart(status, status.sessionId ?? undefined, status.name ?? undefined);
         await this.requestState();
         await this.requestMessages();
+        void channels.attach();
       }
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
@@ -838,6 +853,8 @@ class ChatStore {
   async deleteSession(sessionId: string): Promise<void> {
     try {
       await invoke<boolean>('delete_session', { sessionId });
+      channels.forgetSession(sessionId);
+      notifications.forgetSession(sessionId);
       if (sessionId === this.activeSessionId) {
         this.activeSessionId = null;
         this.activeSessionName = 'Untitled Session';
@@ -857,6 +874,10 @@ class ChatStore {
   }
 
   async sendCommand(command: PiRpcCommand): Promise<void> {
+    if (command.type === 'switch_session' || command.type === 'new_session') {
+      // Pi does not cancel dialogs when the session changes, so answer them first.
+      await channels.beforeSessionChange();
+    }
     try {
       await invoke('send_pi_command', { command });
     } catch (err) {
@@ -903,17 +924,20 @@ class ChatStore {
     const effectiveMessage = trimmed || '(Attached image)';
 
     if (!this.isAgentRunning) {
-      // Optimistically show user message; reconciled when `message_start` (role: "user") arrives
+      // Optimistically show user message; reconciled when `message_start` (role: "user") arrives,
+      // or by the prompt's response when Pi handles the prompt itself (an extension command).
+      const promptId = makeId();
       this.messages.push({
         id: makeId(),
         role: 'user',
         timestamp: Date.now(),
         blocks: [{ type: 'text', text: effectiveMessage, isComplete: true }],
-        isOptimistic: true
+        isOptimistic: true,
+        promptId
       });
 
       await this.sendCommand({
-        id: makeId(),
+        id: promptId,
         type: 'prompt',
         message: effectiveMessage,
         ...(hasImages ? { images } : {})
@@ -1149,8 +1173,16 @@ class ChatStore {
     }
   }
 
+  /** The newest message that is not an extension message, which can arrive in the middle of a turn. */
+  private lastConversationMessage(): ChatMessage | undefined {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      if (this.messages[i].role !== 'custom') return this.messages[i];
+    }
+    return undefined;
+  }
+
   private getOrCreateStreamingAssistantMessage(): ChatMessage {
-    const last = this.messages[this.messages.length - 1];
+    const last = this.lastConversationMessage();
     if (last && last.role === 'assistant' && last.isStreaming) {
       return last;
     }
@@ -1387,9 +1419,23 @@ class ChatStore {
   }
 
   private handleMessageEnd(rawMsg?: PiRawMessage): void {
+    if (rawMsg?.role === 'custom') {
+      // Pi sends start and end for a custom message that is complete, so only the end is used.
+      const view = customMessageView(rawMsg);
+      if (view) {
+        this.messages.push({
+          id: makeId(),
+          role: 'custom',
+          customType: view.customType,
+          timestamp: rawMsg.timestamp ?? Date.now(),
+          blocks: [{ type: 'text', text: view.text, isComplete: true }]
+        });
+      }
+      return;
+    }
     if (!rawMsg || rawMsg.role !== 'assistant') return;
 
-    const last = this.messages[this.messages.length - 1];
+    const last = this.lastConversationMessage();
     if (!last || last.role !== 'assistant') return;
 
     last.isStreaming = false;
@@ -1542,7 +1588,24 @@ class ChatStore {
     }
   }
 
+  /**
+   * Settles the optimistic user message of a `prompt` command. A prompt that Pi handled itself,
+   * such as an extension command, never produces a user message, and a rejected prompt was not
+   * sent, so neither may stay marked as sending.
+   */
+  private settlePromptResponse(event: PiRpcEvent): void {
+    if (event.command !== 'prompt' || typeof event.id !== 'string') return;
+    const index = this.messages.findIndex((m) => m.promptId === event.id);
+    if (index < 0) return;
+    if (event.success === false) {
+      this.messages.splice(index, 1);
+    } else if (event.data?.disposition === 'handled') {
+      this.messages[index].isOptimistic = false;
+    }
+  }
+
   private handleResponseEvent(event: PiRpcEvent): void {
+    this.settlePromptResponse(event);
     if (event.success === false) {
       if (
         event.command === 'get_available_models' ||
@@ -1748,6 +1811,7 @@ class ChatStore {
     }
 
     if (event.command === 'switch_session') {
+      void channels.attach();
       void this.requestState();
       void this.requestMessages();
       return;
@@ -1773,6 +1837,20 @@ class ChatStore {
           timestamp: typeof raw.timestamp === 'number' ? raw.timestamp : Date.now(),
           blocks: [{ type: 'text', text: text || '(empty message)', isComplete: true }]
         });
+        continue;
+      }
+
+      if (raw.role === 'custom') {
+        const view = customMessageView(raw);
+        if (view) {
+          reconstructed.push({
+            id: makeId(),
+            role: 'custom',
+            customType: view.customType,
+            timestamp: typeof raw.timestamp === 'number' ? raw.timestamp : Date.now(),
+            blocks: [{ type: 'text', text: view.text, isComplete: true }]
+          });
+        }
         continue;
       }
 

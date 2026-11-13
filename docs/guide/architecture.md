@@ -68,6 +68,12 @@ You can guide `pi` while it generates tokens:
 - **Follow-up (`followUp`)**: Adds instructions to a queue. The agent processes them on the next turn.
 - **Abort (`abort`)**: Terminates generation and clears pending queues instantly.
 
+## Extension Channel {#extension-channel}
+
+Pi extensions can drive native PiPan UI through channels. PiPan loads a small shim extension into the primary Pi session (`--extension <shim>`). The shim turns calls on the shared `pi.events` bus into messages that Pi's RPC mode already carries: widgets for state, an `editor` dialog for requests, custom entries for the log. A prompt that starts with `/pipan-intent` carries the reply from the host.
+
+The frontend store (`src/lib/stores/channels.svelte.ts`) decodes and validates those messages, keeps state per session, queues requests, and renders them with built-in primitives: a graph panel, a diff or document review, and a form. Nothing activates unless the shim announces itself. See [Channels](./channels).
+
 ## SQLite Persistence {#sqlite-persistence}
 
 PiPan stores application metadata in a local SQLite file (`pipan.db`).
@@ -82,5 +88,6 @@ PiPan stores application metadata in a local SQLite file (`pipan.db`).
 
 - **Sessions**: Session ID, custom name, project folder path, model ID, token usage, cost, and timestamps.
 - **Node Positions**: Custom (X, Y) coordinates for the DAG canvas, saved per session and layout direction.
+- **Channel Node Positions**: Custom coordinates for graph panels that extensions publish, saved per session, channel, topic, graph and node.
 - **GitHub Views**: Saved pull request filter queries.
 - **Tags & Metadata**: Tags and group assignments for organizing large lists of sessions.

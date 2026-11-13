@@ -93,6 +93,10 @@ PiPan stores application state and metadata in a SQLite database located at `<ap
   - **v4 (Usage & Cost Ledger)**:
     - `usage_ledger`: Stores `session_id`, `message_id`, `timestamp`, `provider`, `model`, `input`, `output`, `cache_read`, `cache_write`, `cost_usd`, `cwd`.
     - `usage_file_checkpoints`: Tracks file scan positions (`path`, `mtime`, `byte_offset`) for incremental parsing of Pi transcript files.
+  - **v5 (Extension Channel Layouts)**:
+    - `channel_node_positions`: Stores manual node positions of extension channel graphs.
+  - **v6 (Channel Layout Keys)**:
+    - `channel_node_positions` is rebuilt with `session_id` (foreign key with cascade delete), `ch`, `topic`, `graph_id`, `node_id`, `x`, `y`, `pinned`. Rows saved under v5 had no channel or topic and are dropped.
 - **Session Data vs. Transcript Files**:
   - `pipan.db` stores session metadata, graph layouts, PR views, and usage metrics.
   - Pi CLI stores raw message conversations, run states, and tool execution logs directly in its `.jsonl` transcript file (`session_file_path`).
@@ -149,6 +153,9 @@ The Svelte 5 frontend communicates with the Rust core via typed IPC wrappers.
 | | `install_extension_from_folder` | Copies local plugin to extensions directory |
 | | `install_extension_from_git` | Clones Git repository into extensions directory |
 | | `uninstall_extension` | Deletes external extension folder |
+| **Channels** | `load_channel_node_positions` | Loads saved node positions of a channel graph |
+| | `save_channel_node_positions` | Saves dragged node positions of a channel graph |
+| | `clear_channel_node_positions` | Resets a channel graph layout |
 | **Usage** | `get_usage_analytics` | Aggregates token counts and costs |
 | | `rescan_usage_files` | Scans transcript files for new token usage |
 | | `record_usage_entry` | Records single usage entry into SQLite |
@@ -156,7 +163,7 @@ The Svelte 5 frontend communicates with the Rust core via typed IPC wrappers.
 #### Key Listen Channels (Rust to Frontend)
 
 - `pi:status`: Broadcasts connection state changes and process metadata.
-- `pi:event`: Delivers raw JSON RPC events from Pi stdout.
+- `pi:event`: Delivers raw JSON RPC events from Pi stdout. Extension channel traffic (shim announce, state widgets, request dialogs, log entries) arrives here and is handled first by `src/lib/stores/channels.svelte.ts`.
 - `pi:stderr`: Streams stderr diagnostic logs.
 - `agent:status`: Broadcasts multi-agent session lifecycle changes.
 - `agent:approval_request`: Emits gated action requests needing user approval.
@@ -216,6 +223,13 @@ PiPan uses a VS Code-style extension model defined in `src-tauri/src/extensions.
           "name": "analyze",
           "description": "Run custom static analysis"
         }
+      ],
+      "channels": [
+        {
+          "topic": "graph",
+          "primitive": "graph",
+          "title": "Run graph"
+        }
       ]
     }
   }
@@ -226,6 +240,7 @@ PiPan uses a VS Code-style extension model defined in `src-tauri/src/extensions.
   - `mainViews`: Dedicated full-window screens (such as Cost Analytics or Extension Manager).
   - `statusBarItems`: Indicators in the bottom status bar (left or right aligned).
   - `slashCommands`: Quick actions available in the chat prompt input.
+  - `channels`: Graph topics of the plugin's own channel that PiPan renders with a fixed title and placement.
 - **Built-in First-Party Extensions**:
   PiPan repackages its primary subsystems as built-in extensions:
   1. `pipan.node-graph`: Living DAG canvas and node inspection panel.
@@ -233,6 +248,7 @@ PiPan uses a VS Code-style extension model defined in `src-tauri/src/extensions.
   3. `pipan.terminal`: Integrated PTY shell panel.
   4. `pipan.files`: Workspace file explorer and prompt attachment selector.
   5. `pipan.cost-analytics`: Token and expense analytics view and status widget.
+  6. `pipan.channels`: Graph panels published by Pi extensions through channels.
 - **Registration & Sandboxing**:
   - External extensions reside in `<app_local_data_dir>/extensions/<id>/` or `~/.pipan/extensions/<id>/`.
   - Built-in IDs (`pipan.*`) are reserved and protected against overwriting.
@@ -240,7 +256,21 @@ PiPan uses a VS Code-style extension model defined in `src-tauri/src/extensions.
   - External scripts execute in a restricted webview environment and register through `window.pipan.registerExtension(...)`.
   - Extensions cannot execute arbitrary shell code directly; all host operations route through validated Tauri commands.
 
-### e. Dependency Doctor
+### e. Extension Channel
+
+Pi extensions drive native PiPan UI through channels. The contract is in `docs/guide/channels.md`.
+
+- **Shim**: `src-tauri/resources/pipan-channel-shim.ts` is written to the app data directory and passed to the primary Pi session with `--extension` (`src-tauri/src/channel.rs`, `pi_rpc.rs`). It is the only code that touches the wire encoding.
+- **Producer API**: Pi extensions use `pi.events` (`pipan:hello`, `pipan:state`, `pipan:request`, `pipan:log`, and `pipan:intent` back to the producer). Every call is a no-op without a shim.
+- **Carriers**: state is a widget `pipan:s:<ch>:<topic>`, a request is an `editor` dialog titled `pipan:r:<ch>:<kind>`, the log is custom entries and messages `pipan:l:<ch>:<name>`, an intent is a prompt `/pipan-intent <json>`, and the shim announces itself with the widget `pipan:shim`.
+- **Frontend** (`src/lib/channels/`, `src/lib/stores/channels.svelte.ts`): codec, validators, the channel store, and the primitives: `graph` (panel, Dagre layout), `review` (diff and document, line comments) and `form`. `RequestHost.svelte` shows the oldest pending request of the viewed session in a modal. Pending requests are cancelled when the session switches, stops or exits.
+- **Pi dialogs**: `extension_ui_request` records for `select`, `confirm`, `input` and `editor` that are not channel requests are shown as forms in the same modal and queue (`src/lib/channels/dialog-bridge.ts`). Pi's `timeout` closes the modal locally. Plan-gate approvals (`PIPAN_APPROVAL::`) are left to `approval.rs`.
+- **Attention** (`src/lib/stores/channel-attention.svelte.ts`, `src/lib/channels/attention.ts`): a graph panel opens once per session and topic on first publish (at most 4 per session), a node that starts waiting with actions is selected, and a hidden panel shows a dot on its tab until the node stops waiting or the panel is shown.
+- **Chat messages and notifications**: `pi.sendMessage` messages with `display: true` are drawn as cards in the chat (`src/lib/chat/custom-messages.ts`), except `pipan:l:` log messages. `notify` events become toasts (`src/lib/stores/notifications.svelte.ts`, `ToastHost.svelte`), kept per session in the dev debug view.
+- **Plugin API**: `window.pipan.channel(id)` gives plugins `subscribe`, `onRequest` and `intent`. `registerExtension` accepts `messageRenderers`, and manifests accept `contributes.channels`. Containers that plugins draw into use the `.plugin-surface` class, which gives native controls a baseline style.
+- **Tests**: `pnpm test:channel` drives `examples/channel-reference/producer.ts` through a real `pi --mode rpc` process. `pnpm test` covers the store, validators and review model. `pnpm channels:schema` regenerates `docs/public/channels.schema.json` from `src/lib/channels/types.ts`, and a test fails when the file is stale.
+
+### f. Dependency Doctor
 
 The Dependency Doctor (`src-tauri/src/doctor.rs`, `src/lib/stores/doctor.svelte.ts`) diagnoses host environment prerequisites and repairs missing tools.
 
@@ -267,6 +297,7 @@ The Dependency Doctor (`src-tauri/src/doctor.rs`, `src/lib/stores/doctor.svelte.
 
 ```
 pipan/
+├── examples/                      # channel-reference (producer) and channel-plugin
 ├── docs/                          # VitePress documentation site
 │   ├── .vitepress/                # VitePress site configuration and theme
 │   ├── guide/                     # Documentation guide pages
@@ -300,12 +331,16 @@ pipan/
 │   │   │   ├── nodes/                     # Svelte Flow custom graph node cards
 │   │   │   └── panels/                    # Split panels (Files, Terminal, PRs)
 │   │   ├── stores/                # Reactive state machines (Svelte 5 runes)
+│   │   │   ├── channel-attention.svelte.ts # Graph panel auto-open, waiting marks
+│   │   │   ├── channel-graph-layout.svelte.ts # Dragged node positions of channel graphs
+│   │   │   ├── channels.svelte.ts         # Extension channel state, requests, Pi dialogs
 │   │   │   ├── chat.svelte.ts             # Pi RPC session and message store
 │   │   │   ├── doctor.svelte.ts           # Diagnostic checks and auto-fix store
 │   │   │   ├── files.svelte.ts            # Workspace files and Git status store
 │   │   │   ├── flow.svelte.ts             # Agent DAG and approval gate store
 │   │   │   ├── github.svelte.ts           # PRs, diffs, reviews, and webhook store
 │   │   │   ├── graph-layout.svelte.ts     # Dagre layout and coordinate persistence
+│   │   │   ├── notifications.svelte.ts    # Extension notifications shown as toasts
 │   │   │   ├── terminal.svelte.ts         # PTY terminal manager store
 │   │   │   ├── usage.svelte.ts            # Cost ledger and token analytics store
 │   │   │   └── workspace.svelte.ts        # Split panels, layout, and active views
@@ -313,6 +348,8 @@ pipan/
 │   │   │   ├── builtin.ts                 # Manifests for built-in extensions
 │   │   │   ├── registry.svelte.ts         # Extension registration and lifecycle store
 │   │   │   └── types.ts                   # Manifest and contribution type contracts
+│   │   ├── channels/              # Extension channel codec, validators, review model, dialog bridge, plugin API
+│   │   ├── chat/                  # Extension message display rules
 │   │   ├── flow/                  # DAG layout algorithms and telemetry helpers
 │   │   ├── types/                 # Shared TypeScript interfaces
 │   │   │   ├── agent.ts                   # Multi-agent and approval payload types
@@ -336,6 +373,7 @@ pipan/
 │       ├── db.rs                  # SQLite migrations and connection management
 │       ├── doctor.rs              # System dependency checks and package manager fixes
 │       ├── extensions.rs          # Extension manifest parsing and disk manager
+│       ├── channel.rs             # Writes the channel shim and builds its Pi arguments
 │       ├── github.rs              # Host gh CLI wrapper (PRs, diffs, auth)
 │       ├── webhook.rs             # Local Axum webhook receiver and forwarder
 │       ├── terminal.rs            # Native PTY shell session manager

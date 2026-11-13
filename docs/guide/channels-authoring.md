@@ -1,0 +1,207 @@
+# Writing a channel producer
+
+A producer is a Pi extension that uses `pi.events` to publish state, ask questions and write log entries. PiPan renders them. This page builds up the reference producer in `examples/channel-reference/producer.ts`. The wire format and schemas are in the [Channels reference](./channels).
+
+You need Pi 1.5 or later. A producer works without PiPan: every call is a no-op when no shim answers, so ship a normal fallback.
+
+## 1. Find out whether PiPan is there
+
+The shim answers `pipan:hello` with the primitives and versions the host can render.
+
+```ts
+const hello = () => {
+  let reply: { protocol: number; primitives: Record<string, number> } | undefined;
+  pi.events.emit("pipan:hello", { reply: (info) => (reply = info) });
+  return reply;
+};
+const supports = (primitive: string) => (hello()?.primitives[primitive] ?? 0) >= 1;
+
+pi.on("session_start", () => void hello());
+```
+
+No reply means no host. A reply without the primitive you need means you must use your normal UI. Call `hello` after `session_start`, and again before each use, because it is cheap.
+
+### Where to put the producer
+
+Pi loads extensions from `~/.pi/agent/extensions/`, from a package listed in `~/.pi/agent/settings.json`, and from `.pi/extensions/` in the project. Pi skips the project folder until the project is trusted, and over RPC (which is how PiPan runs Pi) it cannot ask, so a producer in `.pi/extensions/` of an untrusted folder silently does not load: its commands do not exist and `hello` gets no reply from it. Trust the folder first (the `/trust` command in a Pi terminal, or an entry for the folder in `~/.pi/agent/trust.json`), or install the producer at the user level or as a package, which trust does not affect. Pi reads extensions and trust when a session process starts, so stop and reopen the session after changing either.
+
+## 2. Publish a graph
+
+`pipan:state` publishes the latest value of a topic. The host replaces the previous value, keeps it per session, and opens a panel for a graph the first time it is published (once per session and topic; a panel the user closes stays closed, and at most 4 open by themselves). Other graph topics are in the panel picker.
+
+```ts
+const CH = "acme.demo"; // your channel id: dotted, lowercase
+
+const state = (topic: string, primitive: string, payload: unknown) =>
+  pi.events.emit("pipan:state", { ch: CH, topic, primitive, payload });
+
+state("graph", "graph", {
+  id: "run-1",
+  title: "Deploy",
+  direction: "LR",
+  nodes: [
+    { id: "build", label: "Build", status: "done" },
+    { id: "ship", label: "Ship", status: "active", actions: [{ id: "pause", label: "Pause" }] },
+  ],
+  edges: [{ from: "build", to: "ship", taken: 1 }],
+  active: ["ship"],
+});
+
+state("graph", "graph", null); // clear
+```
+
+Publish on each status change. The host applies at most 10 updates per second. `graph.id`, with the channel and topic, is the key under which users' dragged node positions are saved, so keep it stable for one logical run.
+
+Panels and state last as long as the Pi session. If the user switches to another session, starts a new chat or opens another folder, Pi shuts down your extension and starts a new instance for the next session, so a run held in memory stops and the graph disappears. Save what you need to resume (for example with `pi.appendEntry`) and republish at `session_start`. The reference producer does not do this.
+
+## 3. Ask a question
+
+`pipan:request` shows a modal and resolves `reply` with the answer, or with `undefined` when the user cancels or the session ends. Always handle `undefined`.
+
+```ts
+const request = (kind: string, payload: unknown) =>
+  new Promise<unknown>((resolve) => pi.events.emit("pipan:request", { ch: CH, kind, payload, reply: resolve }));
+
+const answer = await request("form", {
+  title: "Deploy target",
+  body: "Choose where the build goes.",
+  fields: [
+    { id: "target", type: "select", label: "Target", required: true,
+      options: [{ value: "staging", label: "Staging" }, { value: "production", label: "Production" }] },
+  ],
+  actions: [
+    { id: "go", label: "Deploy", style: "primary" },
+    { id: "skip", label: "Skip", skipValidation: true },
+  ],
+});
+// { action: "go", values: { target: "staging" } }
+```
+
+The `form` primitive covers a pick-one question, a checklist, free text and an edit with a prefill. To accept either a fixed choice or a typed answer, add a text field with `required: true, requiredFor: ["submit"]` and an action `submit`: the choice actions then send an empty text without an error. To accept a select value or a typed answer with the same action, give both fields `required: true`, the same `requiredFor`, and `exclusiveWith` naming each other. The reference producer's `/demo-form` takes `pick`, `checklist`, `edit`, `answer` or `body` to show each shape.
+
+Pi's own dialogs (`ctx.ui.select`, `confirm`, `input`, `editor`) need no shim and work in PiPan: the host shows them as a modal headed "Requested by an extension". Use a channel request when you want the richer form, review or provenance. The reference producer's `/demo-dialog` calls each one.
+
+Validate the answer yourself. The host enforces required fields and `min`/`max`, but only the producer knows what is acceptable.
+
+A request has no expiry: it waits until the user answers or cancels, the session changes, or Pi exits. A producer that cannot wait forever races its own timer and decides what to do, because the host will not cancel the request for it:
+
+```ts
+const wait = (ms: number) => new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), ms));
+const answer = await Promise.race([request("form", payload), wait(10 * 60_000)]);
+if (answer === "timeout") { /* pause the run, leave the dialog open, or ask again later */ }
+```
+
+The dialog stays open after your timer fires, so treat a late answer as stale.
+
+## 4. Review a diff or a document
+
+`review` uses the same call with `kind: "review"`. The subject is a diff or a list of documents, and `comments` carries threads from earlier rounds.
+
+```ts
+const answer = await request("review", {
+  title: "Review the changes",
+  subject: { type: "diff", label: "Changes against main", files },
+  comments: earlierComments,
+  choices: [
+    { id: "approve", label: "Approve", style: "primary" },
+    { id: "changes", label: "Request changes", requiresComment: true },
+  ],
+});
+// { choice, comments, touched, note? }
+```
+
+The user comments on lines or ranges, and can edit, reopen and dismiss earlier comments. The answer returns the full comment list. `touched` lists the ids the user added, edited, reopened or dismissed in this round. New comments have temporary ids (`tmp-1`, `tmp-2`); assign permanent ones when you store them.
+
+Anchoring is yours. When the subject changes between rounds, move comments, set `outdated` on those that no longer fit, and decide what to send to the model.
+
+For documents, use `subject: { type: "document", documents: [{ path, text }] }`. Markdown documents are split into blocks, one per paragraph, heading or list item, and a comment anchors to the source lines of a block. Set `format: "text"` for one block per line.
+
+## 5. Receive intents
+
+When the user presses a graph action or a plugin sends an intent, the shim emits `pipan:intent` on the event bus.
+
+```ts
+pi.events.on("pipan:intent", (data) => {
+  if (data.ch !== CH) return;
+  if (data.name === "graph.action") {
+    // data.payload: { graphId, nodeId?, actionId }
+  }
+});
+```
+
+Intents arrive outside any command, so keep a reference to the latest context if you need to notify the user.
+
+Use a graph action for a control the user may press at any time, such as pause, retry or abort. A decision the producer is waiting on is a request (section 3): it opens a dialog and returns the answer directly. A node that waits for the decision can show `status: "waiting"` at the same time, which selects the node and marks the panel tab, and can also carry a graph action as a second way to decide. The reference producer's `/demo-graph` does both at its Approve step.
+
+## 6. Write to the log
+
+`pipan:log` stores a durable entry in the session file. With `as: "entry"` it uses `pi.appendEntry` and the model never sees it. With `as: "message"` it uses `pi.sendMessage`, so the model can see the text in `content`.
+
+```ts
+pi.events.emit("pipan:log", { ch: CH, name: "note", as: "message", payload: { n: 1 }, content: "A note for the model." });
+```
+
+The host reloads the log when it attaches to a session, so log entries survive a restart of PiPan. A plugin can draw messages with `messageRenderers` (below).
+
+### Messages and notifications for the user
+
+These are plain Pi calls, not channel traffic, and they work in any Pi extension.
+
+- `pi.sendMessage({ customType, content, display: true })` adds a message to the session. PiPan draws it in the chat as a card labelled with `customType`, with `content` rendered as markdown, and draws it again when the session is reloaded. With `display: false` the message is for the model only and PiPan does not show it. Messages whose `customType` starts with `pipan:l:` are channel log messages and are not drawn unless a plugin renders them.
+- `ctx.ui.notify(message, level)` shows a toast. `info` and `warning` toasts leave after a few seconds, and `error` toasts stay until dismissed. Notifications are not part of the transcript, so an important result belongs in a message.
+- A command an extension handles (such as `/demo-form`) is not stored by Pi. It appears in the chat while the session is open and not after a reload.
+
+## 7. Try it
+
+The payload types are in the [JSON Schema](/channels.schema.json) that PiPan publishes with these docs. Validating your payloads against it in your own tests catches a misspelled field early.
+
+The harness drives the reference producer through a real Pi process. It needs `pi` on the path and runs offline.
+
+```bash
+pnpm test:channel
+```
+
+To use it in the app, copy the producer to `~/.pi/agent/extensions/` (or `.pi/extensions/` in a project), start a session in PiPan, and run `/demo-graph`, `/demo-form pick`, `/demo-review-diff` or `/demo-review-doc multi`. Each command reports its result in a notification that starts with `demo-result:`.
+
+## 8. Custom UI from a plugin
+
+When the built-in primitives are not enough, ship a [PiPan plugin](./extensions) whose id is your channel id. The plugin reaches the channel through `window.pipan.channel(id)`.
+
+```js
+const channel = window.pipan.channel("acme.demo");
+
+// The latest value for the viewed session, now and on every change. null means nothing is published.
+const stop = channel.subscribe("graph", (snapshot) => { /* snapshot.data */ });
+
+// Take over one request kind from this channel.
+channel.onRequest("pick-file", (container, request) => {
+  container.textContent = JSON.stringify(request.payload);
+  // request.answer({ path: "a.txt" })  or  request.cancel()
+});
+
+// Send an intent to the producer.
+await channel.intent("refresh", { reason: "button" });
+```
+
+A plugin registration can also draw log messages in the chat transcript, keyed by the log `name`:
+
+```js
+window.pipan.registerExtension({
+  id: "acme.demo",
+  messageRenderers: {
+    note: (message, container) => { container.textContent = String(message.content); },
+  },
+});
+```
+
+A manifest can fix the placement and title of a graph panel, and list it in the panel picker before the producer has published anything:
+
+```json
+{ "contributes": { "channels": [{ "topic": "graph", "primitive": "graph", "title": "Deploy", "icon": "network" }] } }
+```
+
+`examples/channel-plugin/` is a complete plugin for the reference producer.
+
+## Limits
+
+The host drops a message that breaks a limit and shows a producer error. Limits are 8 MiB per state or request, 500 nodes per graph (extra nodes are cut with a notice), 2000 edges, 200 files and 50,000 diff lines per review, and 1000 comments. Pending requests are bounded per session and rate limited.
