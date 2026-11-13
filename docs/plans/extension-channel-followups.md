@@ -192,7 +192,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 Carried over from the first plan, still unconfirmed:
 
 10. **Request expiry.** Decided: no expiry. The shim no longer times requests out, and a request waits until it is answered, cancelled, or the session ends. Implemented in F6 task 0.
-11. **Abort does not cancel pending requests.** Spec section 8 was followed, and the first plan's section 3.2 differs. Confirm.
+11. **Abort does not cancel pending requests.** Decided: follow the spec (section 8). Stop ends generation only; a request is ended by an answer, Cancel, a session change, or the process exiting. The first plan's section 3.2 is superseded.
 12. **Markdown sanitizer.** `marked` plus a small hand-written sanitizer (raw HTML escaped, images become alt text, only `http`, `https` and `mailto` links) instead of DOMPurify. Confirm.
 13. **Chunk size unit.** Chunks are 65,536 UTF-16 code units, not bytes. The guide now says characters. Confirm that is acceptable, or change the shim to count bytes.
 
