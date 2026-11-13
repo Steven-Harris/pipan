@@ -9,6 +9,8 @@
   import PanelPlaceholder from './PanelPlaceholder.svelte';
   import PullRequestsPanel from './PullRequestsPanel.svelte';
   import TerminalPanel from './TerminalPanel.svelte';
+  import GraphPanel from './channels/GraphPanel.svelte';
+  import { parseGraphPanelId } from '#lib/channels/panels.ts';
   import ExtensionContributionHost from './ExtensionContributionHost.svelte';
 
   let showAddDropdown = $state(false);
@@ -211,6 +213,11 @@
         <FileExplorerPanel />
       {:else if id === 'prs' && extensionRegistry.isPanelEnabled('prs')}
         <PullRequestsPanel />
+      {:else if parseGraphPanelId(id) && extensionRegistry.isPanelEnabled(id)}
+        {@const target = parseGraphPanelId(id)!}
+        <SvelteFlowProvider>
+          <GraphPanel ch={target.ch} topic={target.topic} />
+        </SvelteFlowProvider>
       {:else if extensionRegistry.contributedPanelsById[id]}
         {@const contributed = extensionRegistry.contributedPanelsById[id]}
         <ExtensionContributionHost

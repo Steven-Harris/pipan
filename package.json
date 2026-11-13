@@ -30,7 +30,8 @@
     "@tauri-apps/plugin-opener": "^2",
     "@xyflow/svelte": "^1.7.1",
     "dagre": "^0.8.5",
-    "lucide-svelte": "^1.0.1"
+    "lucide-svelte": "^1.0.1",
+    "marked": "^18.2.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^4.0.1",

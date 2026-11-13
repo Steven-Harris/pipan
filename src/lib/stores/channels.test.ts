@@ -93,6 +93,7 @@ describe('state', () => {
 
   it('stores the latest validated state per topic and clears on empty widget', () => {
     channels.handleEvent(S, stateEvent('graph', 1, 'graph', graph('one')));
+    vi.advanceTimersByTime(100);
     channels.handleEvent(S, stateEvent('graph', 2, 'graph', graph('two')));
     channels.handleEvent(S, stateEvent('other', 1, 'custom', { any: 1 }));
     const states = channels.statesFor(S);
@@ -146,6 +147,41 @@ describe('state', () => {
     // A restarted shim counts from 1 again and must not be mistaken for stale.
     channels.handleEvent(S, stateEvent('graph', 1, 'graph', graph('fresh')));
     expect(channels.statesFor(S)[0].data).toMatchObject({ id: 'fresh' });
+  });
+
+  it('coalesces bursts of graph updates to one per interval, newest wins', () => {
+    channels.handleEvent(S, stateEvent('graph', 1, 'graph', graph('first')));
+    expect(channels.statesFor(S)[0].data).toMatchObject({ id: 'first' });
+    for (let i = 2; i <= 6; i++) channels.handleEvent(S, stateEvent('graph', i, 'graph', graph(`g${i}`)));
+    expect(channels.statesFor(S)[0].data).toMatchObject({ id: 'first' });
+    vi.advanceTimersByTime(100);
+    expect(channels.statesFor(S)[0].data).toMatchObject({ id: 'g6' });
+    // After the interval an update applies immediately again.
+    vi.advanceTimersByTime(100);
+    channels.handleEvent(S, stateEvent('graph', 7, 'graph', graph('g7')));
+    expect(channels.statesFor(S)[0].data).toMatchObject({ id: 'g7' });
+  });
+
+  it('does not coalesce non-graph primitives', () => {
+    channels.handleEvent(S, stateEvent('t', 1, 'custom', { n: 1 }));
+    channels.handleEvent(S, stateEvent('t', 2, 'custom', { n: 2 }));
+    expect(channels.statesFor(S)[0].data).toEqual({ n: 2 });
+  });
+
+  it('a clear cancels a held graph update', () => {
+    channels.handleEvent(S, stateEvent('graph', 1, 'graph', graph('first')));
+    channels.handleEvent(S, stateEvent('graph', 2, 'graph', graph('held')));
+    channels.handleEvent(S, widget(`pipan:s:${CH}:graph`, undefined));
+    vi.advanceTimersByTime(500);
+    expect(channels.statesFor(S)).toHaveLength(0);
+  });
+
+  it('a session change cancels held graph updates', async () => {
+    channels.handleEvent(S, stateEvent('graph', 1, 'graph', graph('first')));
+    channels.handleEvent(S, stateEvent('graph', 2, 'graph', graph('held')));
+    await channels.beforeSessionChange();
+    vi.advanceTimersByTime(500);
+    expect(channels.statesFor(S)).toHaveLength(0);
   });
 
   it('surfaces truncation notices', () => {

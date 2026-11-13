@@ -94,6 +94,8 @@ export interface ProducerError {
 /** Prefix of the ids this store puts on its own Pi commands, so responses can be recognised. */
 const ID_PREFIX = 'ch-';
 const LOG_SYNC_DELAY_MS = 50;
+/** Graph updates are applied at most once per interval; the newest one in an interval wins. */
+const GRAPH_COALESCE_MS = 100;
 
 const stateKey = (sessionId: string, ch: string, topic: string) => `${sessionId}\u0000${ch}\u0000${topic}`;
 
@@ -121,6 +123,9 @@ class ChannelsStore {
   private logBusy = new Set<string>();
   private logDirty = new Set<string>();
   private logTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private heldStates = new Map<string, ChannelState>();
+  private heldTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private lastCommit = new Map<string, number>();
   private nextId = 0;
   private nextErrorId = 0;
 
@@ -217,7 +222,9 @@ class ChannelsStore {
     }
     const { ch, topic } = parsedKey;
     if (!lines || lines.length === 0) {
-      const { [stateKey(sessionId, ch, topic)]: _removed, ...rest } = this.states;
+      const key2 = stateKey(sessionId, ch, topic);
+      this.dropHeld(key2);
+      const { [key2]: _removed, ...rest } = this.states;
       this.states = rest;
       return;
     }
@@ -236,19 +243,55 @@ class ChannelsStore {
       this.addError(sessionId, ch, `Extension ${ch} sent an invalid ${decoded.value.primitive}: ${valid.error}`);
       return;
     }
-    this.states = {
-      ...this.states,
-      [stateKey(sessionId, ch, topic)]: {
-        sessionId,
-        ch,
-        topic,
-        primitive: decoded.value.primitive,
-        seq: decoded.value.seq,
-        data: valid.value,
-        notices: valid.notices,
-        updatedAt: Date.now()
+    this.commitState(stateKey(sessionId, ch, topic), {
+      sessionId,
+      ch,
+      topic,
+      primitive: decoded.value.primitive,
+      seq: decoded.value.seq,
+      data: valid.value,
+      notices: valid.notices,
+      updatedAt: Date.now()
+    });
+  }
+
+  /** Applies a state now, or for graphs arriving faster than the coalescing interval, shortly. */
+  private commitState(key: string, state: ChannelState): void {
+    if (state.primitive === 'graph') {
+      const wait = GRAPH_COALESCE_MS - (Date.now() - (this.lastCommit.get(key) ?? 0));
+      if (wait > 0) {
+        this.heldStates.set(key, state);
+        if (!this.heldTimers.has(key)) {
+          this.heldTimers.set(
+            key,
+            setTimeout(() => {
+              this.heldTimers.delete(key);
+              const held = this.heldStates.get(key);
+              this.heldStates.delete(key);
+              if (held) this.commitState(key, held);
+            }, wait)
+          );
+        }
+        return;
       }
-    };
+    }
+    this.dropHeld(key);
+    this.lastCommit.set(key, Date.now());
+    this.states = { ...this.states, [key]: state };
+  }
+
+  private dropHeld(key: string): void {
+    this.heldStates.delete(key);
+    const timer = this.heldTimers.get(key);
+    if (timer) clearTimeout(timer);
+    this.heldTimers.delete(key);
+    this.lastCommit.delete(key);
+  }
+
+  private dropAllHeld(sessionId?: string): void {
+    for (const key of [...new Set([...this.heldTimers.keys(), ...this.lastCommit.keys()])]) {
+      if (sessionId === undefined || key.startsWith(`${sessionId}\u0000`)) this.dropHeld(key);
+    }
   }
 
   private onRequest(sessionId: string, event: ChannelPiEvent): void {
@@ -372,6 +415,7 @@ class ChannelsStore {
     await this.cancelAll();
     this.hosts = {};
     this.states = {};
+    this.dropAllHeld();
     this.seqs.clear();
   }
 
@@ -405,6 +449,7 @@ class ChannelsStore {
   processExited(): void {
     this.hosts = {};
     this.states = {};
+    this.dropAllHeld();
     this.pending = {};
     this.seqs.clear();
     this.requestTimes.clear();
@@ -532,6 +577,7 @@ class ChannelsStore {
   }
 
   private clearStates(sessionId: string): void {
+    this.dropAllHeld(sessionId);
     const kept: Record<string, ChannelState> = {};
     for (const [key, value] of Object.entries(this.states)) {
       if (value.sessionId !== sessionId) kept[key] = value;

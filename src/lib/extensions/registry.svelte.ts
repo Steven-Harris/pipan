@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
+import { CHANNELS_EXTENSION_ID, graphPanelId, parseGraphPanelId } from '#lib/channels/panels.ts';
+import { channels } from '#lib/stores/channels.svelte.ts';
 import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
 import type { PiSkillItem } from '#lib/types/pi.ts';
 import {
@@ -96,6 +98,29 @@ class ExtensionRegistry {
           label: p.title,
           description: p.description ?? `${p.title} (${ext.manifest.name})`,
           iconComponent: resolveExtensionIcon(p.icon)
+        });
+      }
+    }
+    // One panel per published graph topic. Offered in the picker, never opened automatically.
+    if (this.enabledExtensions.some((ext) => ext.manifest.id === CHANNELS_EXTENSION_ID)) {
+      const seen = new Set<string>();
+      for (const state of Object.values(channels.states)) {
+        if (state.primitive !== 'graph') continue;
+        const id = graphPanelId(state.ch, state.topic);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const title = (state.data as { title?: string }).title ?? state.topic;
+        panels.push({
+          id,
+          title,
+          icon: 'network',
+          defaultPosition: 'split',
+          extensionId: CHANNELS_EXTENSION_ID,
+          extensionName: 'Extension Channels',
+          builtin: true,
+          label: title,
+          description: `Graph from ${state.ch}`,
+          iconComponent: resolveExtensionIcon('network')
         });
       }
     }
@@ -202,6 +227,7 @@ class ExtensionRegistry {
   }
 
   isPanelEnabled(panelId: string): boolean {
+    if (parseGraphPanelId(panelId)) return this.isExtensionEnabled(CHANNELS_EXTENSION_ID);
     return Boolean(this.contributedPanelsById[panelId]);
   }
 

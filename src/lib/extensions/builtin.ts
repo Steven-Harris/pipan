@@ -197,6 +197,23 @@ export const COST_ANALYTICS_EXTENSION: PiPanExtensionManifest = {
   }
 };
 
+/**
+ * 6. `pipan.channels` — Extension Channels
+ * Shows UI that Pi extensions publish over the extension channel. Graph panels are added at
+ * runtime, one per published graph topic, so the manifest contributes nothing statically.
+ */
+export const CHANNELS_EXTENSION: PiPanExtensionManifest = {
+  id: 'pipan.channels',
+  name: 'Extension Channels',
+  version: '0.2.0',
+  description:
+    'Renders graphs, reviews and forms that Pi extensions publish through the PiPan extension channel.',
+  author: 'PiPan Core',
+  builtin: true,
+  enabledByDefault: true,
+  contributes: {}
+};
+
 // Named exports for both canonical and short module identifiers
 export const PIPAN_NODES_EXTENSION = NODE_GRAPH_EXTENSION;
 export const PIPAN_GITHUB_EXTENSION = GITHUB_PRS_EXTENSION;
@@ -213,7 +230,8 @@ export const BUILTIN_EXTENSIONS: readonly PiPanExtensionManifest[] = [
   TERMINAL_EXTENSION,
   FILES_EXTENSION,
   GITHUB_PRS_EXTENSION,
-  COST_ANALYTICS_EXTENSION
+  COST_ANALYTICS_EXTENSION,
+  CHANNELS_EXTENSION
 ];
 
 export const BUILTIN_EXTENSION_ALIASES: Readonly<Record<string, string>> = {
@@ -234,7 +252,9 @@ export const BUILTIN_EXTENSION_ALIASES: Readonly<Record<string, string>> = {
   'pipan.analytics': 'pipan.cost-analytics',
   'cost-analytics': 'pipan.cost-analytics',
   analytics: 'pipan.cost-analytics',
-  cost: 'pipan.cost-analytics'
+  cost: 'pipan.cost-analytics',
+  'pipan.channels': 'pipan.channels',
+  channels: 'pipan.channels'
 };
 
 export const ALIASES_BY_BUILTIN_ID: Readonly<Record<string, string[]>> = {
@@ -242,7 +262,8 @@ export const ALIASES_BY_BUILTIN_ID: Readonly<Record<string, string[]>> = {
   'pipan.github-prs': ['pipan.github', 'github-prs'],
   'pipan.terminal': ['terminal'],
   'pipan.files': ['files'],
-  'pipan.cost-analytics': ['pipan.analytics', 'cost-analytics']
+  'pipan.cost-analytics': ['pipan.analytics', 'cost-analytics'],
+  'pipan.channels': ['channels']
 };
 
 export function resolveExtensionId(idOrAlias: string): string {
