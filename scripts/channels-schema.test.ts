@@ -94,7 +94,7 @@ describe('the reference producer against the schema', () => {
 
   it('publishes graphs the schema and the host accept', async () => {
     await loaded.run('demo-graph');
-    vi.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(15_000);
     const graphs = loaded.captured.states.filter((s) => s.primitive === 'graph');
     expect(graphs.length).toBeGreaterThanOrEqual(4);
     const graph = check('GraphState');
@@ -119,7 +119,7 @@ describe('the reference producer against the schema', () => {
 
   it('asks the approval question as a form', async () => {
     await loaded.run('demo-graph');
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(12_000);
     const approval = loaded.captured.requests.find((r) => (r.payload as { title?: string }).title === 'Approve the release?');
     expect(approval).toBeDefined();
     expect(check('FormRequest')(approval?.payload)).toMatchObject({ ok: true });

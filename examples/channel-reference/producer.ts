@@ -145,7 +145,10 @@ export default function (pi: Pi) {
 		if (answer?.action === "approve") advanceFromApproval();
 	};
 
-	/** Advances once a second. At the approval step it asks and waits for the user. */
+	/** Time each step takes, long enough to watch the run progress. */
+	const STEP_MS = 3000;
+
+	/** Advances one step per STEP_MS. At the approval step it asks and waits for the user. */
 	const run = () => {
 		if (timer) clearInterval(timer);
 		timer = setInterval(() => {
@@ -157,7 +160,7 @@ export default function (pi: Pi) {
 				clearInterval(timer);
 				timer = undefined;
 			}
-		}, 1000);
+		}, STEP_MS);
 	};
 
 	pi.registerCommand("demo-graph", {

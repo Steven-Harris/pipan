@@ -261,7 +261,7 @@ test("graph approval: the waiting node comes with a form request, and approving 
 	const done = await waitFor(
 		() => widgets(key).slice(from).find((w) => w.widgetLines && decodeWidget(w).payload.data.nodes.find((n) => n.id === "approve")?.status === "done"),
 		"approval node done",
-		15000,
+		25000,
 	);
 	eq(asked.payload.title, "Approve the release?", "approval is asked as a form request");
 	const waiting = widgets(key).slice(from).find((w) => w.widgetLines && decodeWidget(w).payload.data.nodes.find((n) => n.id === "approve")?.status === "waiting");
