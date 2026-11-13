@@ -152,7 +152,7 @@ Goal: authors do not copy interfaces by hand from a page.
 
 Tasks:
 1. Generate a JSON Schema from `src/lib/channels/types.ts` for the three request kinds and the graph state, with a package script (`pnpm channels:schema`) and a drift check in the tests. Publish the schema file under `docs/public/` so the docs site serves it.
-2. Link the schema and the types from the guide. Decide whether to publish an npm package of types (see decisions). Until then the types stay in the guide.
+2. Link the schema and the types from the guide. The types also stay in the guide. No npm package is published.
 
 Tests: the schema validates the reference producer's payloads and rejects malformed ones.
 
@@ -185,7 +185,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 6. **F4, handled-command record.** Decided: not recorded. A prompt that an extension command handles is not stored by Pi, and the history after a reload matches Pi's own behavior. Revisit with a `session_commands` table if it becomes a problem.
 7. **F5, scope.** Decided: the dialog bridge stays on this branch as its own milestone and commit. The PR split can still make it a separate PR.
 8. **F5, provenance wording.** Decided: bridged dialogs say "Requested by an extension". PiPan does not guess which extension asked.
-9. **F7, package.** JSON Schema in the docs site only, or also an npm package of types.
+9. **F7, package.** Decided: the JSON Schema on the docs site only. Revisit an npm package of types once the protocol has real users.
 
 Carried over from the first plan, still unconfirmed:
 
