@@ -193,12 +193,12 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 8. **F5, provenance wording.** Decided: bridged dialogs say "Requested by an extension". PiPan does not guess which extension asked.
 9. **F7, package.** Decided: the JSON Schema on the docs site only. Revisit an npm package of types once the protocol has real users.
 
-Carried over from the first plan, still unconfirmed:
+Carried over from the first plan:
 
 10. **Request expiry.** Decided: no expiry. The shim no longer times requests out, and a request waits until it is answered, cancelled, or the session ends. Implemented in F6 task 0.
 11. **Abort does not cancel pending requests.** Decided: follow the spec (section 8). Stop ends generation only; a request is ended by an answer, Cancel, a session change, or the process exiting. The first plan's section 3.2 is superseded.
 12. **Markdown sanitizer.** Decided: DOMPurify over `marked` output, replacing the hand-written sanitizer. Implemented in F1 task 5.
-13. **Chunk size unit.** Chunks are 65,536 UTF-16 code units, not bytes. The guide now says characters. Confirm that is acceptable, or change the shim to count bytes.
+13. **Chunk size unit.** Decided: keep 65,536 UTF-16 code units per chunk. The guide says so. Pi's RPC has no stated line size limit.
 
 ## 7. Verification matrix
 
