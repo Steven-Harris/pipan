@@ -2,8 +2,8 @@
 // remembers which panel has a node that started waiting for the user, and tells the panel which
 // node to select.
 
-import { MAX_AUTO_OPENED_PANELS, newlyWaiting } from '#lib/channels/attention.ts';
-import { graphPanelId } from '#lib/channels/panels.ts';
+import { MAX_AUTO_OPENED_PANELS, newlyWaiting, waitingWithActions } from '#lib/channels/attention.ts';
+import { graphPanelId, parseGraphPanelId } from '#lib/channels/panels.ts';
 import type { GraphState } from '#lib/channels/types.ts';
 import { channels, type GraphCommit } from '#lib/stores/channels.svelte.ts';
 import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
@@ -48,6 +48,18 @@ class ChannelAttention {
     });
   }
 
+  /**
+   * True while the panel has a node waiting for the user that they have not looked at. The mark
+   * goes away when the node stops waiting or the graph is cleared, as well as when the panel is shown.
+   */
+  needsAttention(panelId: string): boolean {
+    if (!this.unseen[panelId]) return false;
+    const parsed = parseGraphPanelId(panelId);
+    if (!parsed) return false;
+    const state = Object.values(channels.states).find((s) => s.ch === parsed.ch && s.topic === parsed.topic);
+    return state !== undefined && waitingWithActions(state.data as GraphState).length > 0;
+  }
+
   private isVisible(panelId: string): boolean {
     return workspaceStore.panelOpen && workspaceStore.activePanel === panelId;
   }
@@ -56,7 +68,13 @@ class ChannelAttention {
     const panelId = graphPanelId(state.ch, state.topic);
     this.maybeOpen(state.sessionId, panelId);
 
-    const waiting = newlyWaiting(previous?.data as GraphState | undefined, state.data as GraphState);
+    const graph = state.data as GraphState;
+    // The run moved on, so whatever the mark pointed at no longer needs the user.
+    if (waitingWithActions(graph).length === 0 && this.unseen[panelId]) {
+      const { [panelId]: _stale, ...rest } = this.unseen;
+      this.unseen = rest;
+    }
+    const waiting = newlyWaiting(previous?.data as GraphState | undefined, graph);
     if (waiting.length === 0) return;
     this.focus = { ...this.focus, [panelId]: waiting[0] };
     if (!this.isVisible(panelId)) this.unseen = { ...this.unseen, [panelId]: true };

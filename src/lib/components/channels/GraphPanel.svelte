@@ -21,6 +21,7 @@
   import { TONE_CLASSES, STATUS_STYLES, resolveTone } from '#lib/channels/graph-style.ts';
   import type { GraphAction, GraphNode, GraphState } from '#lib/channels/types.ts';
   import { channelGraphLayout, type GraphRef } from '#lib/stores/channel-graph-layout.svelte.ts';
+  import { waitingWithActions } from '#lib/channels/attention.ts';
   import { graphPanelId } from '#lib/channels/panels.ts';
   import { channelAttention } from '#lib/stores/channel-attention.svelte.ts';
   import { channels } from '#lib/stores/channels.svelte.ts';
@@ -71,8 +72,12 @@
   const PICK_GRACE_MS = 5000;
   const panelId = $derived(graphPanelId(ch, topic));
 
+  /** The node the host selected by itself. The user's own picks are never undone by the host. */
+  let autoSelectedId: string | null = null;
+
   function pick(id: string | null) {
     selectedId = id;
+    autoSelectedId = null;
     lastPickedAt = id === null ? 0 : Date.now();
   }
 
@@ -82,7 +87,10 @@
     if (!target || !graph) return;
     if (graph.nodes.some((n) => n.id === target)) {
       const recentlyPicked = untrack(() => selectedId !== null && Date.now() - lastPickedAt < PICK_GRACE_MS);
-      if (!recentlyPicked) selectedId = target;
+      if (!recentlyPicked) {
+        selectedId = target;
+        autoSelectedId = target;
+      }
     }
     channelAttention.consumeFocus(panelId);
   });
@@ -149,6 +157,19 @@
   // Drop the selection when the node leaves the graph.
   $effect(() => {
     if (selectedId && graph && !selectedNode) selectedId = null;
+  });
+
+  // A node the host selected because it waited for the user is deselected once it stops waiting.
+  $effect(() => {
+    // Read the reactive values first, so the effect re-runs when either changes.
+    const current = graph;
+    const selected = selectedId;
+    const auto = autoSelectedId;
+    if (!current || !auto || auto !== selected) return;
+    if (!waitingWithActions(current).includes(auto)) {
+      selectedId = null;
+      autoSelectedId = null;
+    }
   });
 
   // ---- Actions ----

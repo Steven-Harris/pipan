@@ -104,7 +104,7 @@
             >
               <Icon class="h-3.5 w-3.5 {active ? 'text-indigo-400' : ''}" />
               <span>{def.label}</span>
-              {#if channelAttention.unseen[id]}
+              {#if channelAttention.needsAttention(id)}
                 <span
                   class="h-1.5 w-1.5 rounded-full bg-amber-400"
                   title="Waiting for you"

@@ -119,6 +119,30 @@ describe('channelAttention', () => {
     expect(channelAttention.unseen[id]).toBeUndefined();
   });
 
+  it('drops the mark when the run moves past the waiting node', () => {
+    const id = graphPanelId(CH, 'graph');
+    publish('graph', [node('a', 'active')]);
+    workspaceStore.openPanel('terminal');
+    vi.advanceTimersByTime(200);
+    publish('graph', [node('a', 'waiting')]);
+    expect(channelAttention.needsAttention(id)).toBe(true);
+    vi.advanceTimersByTime(200);
+    publish('graph', [node('a', 'done')]);
+    expect(channelAttention.unseen[id]).toBeUndefined();
+    expect(channelAttention.needsAttention(id)).toBe(false);
+  });
+
+  it('shows no mark once the graph is cleared', () => {
+    const id = graphPanelId(CH, 'graph');
+    publish('graph', [node('a', 'active')]);
+    workspaceStore.openPanel('terminal');
+    vi.advanceTimersByTime(200);
+    publish('graph', [node('a', 'waiting')]);
+    expect(channelAttention.needsAttention(id)).toBe(true);
+    channels.handleEvent(S, widget(`pipan:s:${CH}:graph`, undefined as never));
+    expect(channelAttention.needsAttention(id)).toBe(false);
+  });
+
   it('does not mark a panel the user is looking at', () => {
     const id = graphPanelId(CH, 'graph');
     publish('graph', [node('a', 'active')]);

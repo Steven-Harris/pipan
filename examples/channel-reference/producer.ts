@@ -106,7 +106,8 @@ export default function (pi: Pi) {
 			status: i < index ? "done" : i === index ? (step.kind === "approval" ? "waiting" : "active") : "pending",
 			visits: i <= index ? 1 : 0,
 			detail: { summary: `Synthetic step ${step.label}` },
-			actions: step.kind === "approval" ? [{ id: "approve", label: "Approve", style: "primary" }] : undefined,
+			// The button only makes sense while the run is waiting for it.
+			actions: step.kind === "approval" && i === index ? [{ id: "approve", label: "Approve", style: "primary" }] : undefined,
 		})),
 		edges: STEPS.slice(1).map((step, i) => ({ from: STEPS[i].id, to: step.id, taken: i < index ? 1 : 0 })),
 		active: index < STEPS.length ? [STEPS[index].id] : [],
