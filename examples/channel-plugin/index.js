@@ -52,8 +52,10 @@ window.pipan.registerExtension({
       window.pipan.channel(ID).onRequest("mystery", (container, request) => {
         container.innerHTML = `
           <p>The producer asked: <code data-role="payload"></code></p>
-          <button data-answer="yes" type="button">Yes</button>
-          <button data-answer="no" type="button">No</button>`;
+          <div style="display: flex; gap: .5rem; margin-top: .75rem">
+            <button data-answer="yes" type="button">Yes</button>
+            <button data-answer="no" type="button">No</button>
+          </div>`;
         container.querySelector('[data-role="payload"]').textContent = JSON.stringify(request.payload);
         for (const button of container.querySelectorAll("button")) {
           button.addEventListener("click", () => request.answer({ choice: button.dataset.answer }));

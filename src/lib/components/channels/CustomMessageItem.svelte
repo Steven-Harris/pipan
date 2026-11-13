@@ -33,5 +33,5 @@
   {#if failure}
     <p class="text-xs text-red-300">The message renderer from {item.ch} failed: {failure}</p>
   {/if}
-  <div bind:this={container} class="text-sm text-zinc-300"></div>
+  <div bind:this={container} class="plugin-surface text-sm text-zinc-300"></div>
 </div>

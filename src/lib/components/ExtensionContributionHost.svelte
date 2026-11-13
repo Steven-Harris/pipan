@@ -48,7 +48,7 @@
 
 <div class="flex h-full min-h-0 flex-1 flex-col overflow-auto bg-zinc-950 p-4 text-xs text-zinc-200">
   {#if typeof customHandler === 'function'}
-    <div bind:this={mountEl} class="min-h-0 flex-1"></div>
+    <div bind:this={mountEl} class="plugin-surface min-h-0 flex-1"></div>
   {:else if customHandler && typeof customHandler === 'object'}
     <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-2">
       <div class="flex items-center justify-between gap-2">

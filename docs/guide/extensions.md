@@ -86,6 +86,8 @@ A plugin whose id equals a Pi extension's [channel](./channels) id can build cus
 
 `registerExtension` also accepts `messageRenderers`, a map from a log message name to `(message, container) => cleanup`. It draws the producer's `as: "message"` log entries in the chat transcript. Messages without a renderer stay hidden.
 
+The containers that plugins draw into (panels, request views and message renderers) give native `button`, `input`, `textarea` and `select` elements a plain dark baseline, because PiPan's CSS reset would otherwise leave them looking like text. Styles you set yourself take precedence.
+
 Channel ids are self-declared, so any plugin can read any channel. Plugins run with the same trust as the rest of the webview.
 
 [`examples/channel-plugin`](https://github.com/Steven-Harris/pipan/tree/main/examples/channel-plugin) shows all three. [Writing a channel producer](./channels-authoring) covers the Pi side.
