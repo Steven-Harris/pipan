@@ -264,6 +264,11 @@ function options(value: unknown, path: string): FormOption[] {
   return list;
 }
 
+/** Action ids a requirement applies to. Not-a-list values are ignored, as are non-string entries. */
+function requiredFor(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : undefined;
+}
+
 function formField(value: unknown, path: string): FormField {
   const raw = rec(value, path);
   const id = nonEmpty(raw.id, `${path}.id`);
@@ -276,7 +281,8 @@ function formField(value: unknown, path: string): FormField {
         label,
         options: options(raw.options, `${path}.options`),
         default: optStr(raw.default),
-        required: optBool(raw.required)
+        required: optBool(raw.required),
+        requiredFor: requiredFor(raw.requiredFor)
       };
     case 'multiselect':
       return {
@@ -288,7 +294,8 @@ function formField(value: unknown, path: string): FormField {
           ? raw.default.filter((d): d is string => typeof d === 'string')
           : undefined,
         min: optNum(raw.min),
-        max: optNum(raw.max)
+        max: optNum(raw.max),
+        requiredFor: requiredFor(raw.requiredFor)
       };
     case 'text':
       return {
@@ -298,7 +305,8 @@ function formField(value: unknown, path: string): FormField {
         multiline: optBool(raw.multiline),
         placeholder: optStr(raw.placeholder),
         default: optStr(raw.default),
-        required: optBool(raw.required)
+        required: optBool(raw.required),
+        requiredFor: requiredFor(raw.requiredFor)
       };
     default:
       return bad(`${path}.type "${String(raw.type)}" is not a known field type`);

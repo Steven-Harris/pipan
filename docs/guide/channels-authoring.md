@@ -73,7 +73,7 @@ const answer = await request("form", {
 // { action: "go", values: { target: "staging" } }
 ```
 
-The `form` primitive covers a pick-one question, a checklist, free text and an edit with a prefill. The reference producer's `/demo-form` takes `pick`, `checklist`, `edit` or `body` to show each shape.
+The `form` primitive covers a pick-one question, a checklist, free text and an edit with a prefill. To accept either a fixed choice or a typed answer, add a text field with `required: true, requiredFor: ["submit"]` and an action `submit`: the choice actions then send an empty text without an error. The reference producer's `/demo-form` takes `pick`, `checklist`, `edit`, `answer` or `body` to show each shape.
 
 Validate the answer yourself. The host enforces required fields and `min`/`max`, but only the producer knows what is acceptable.
 

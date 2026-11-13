@@ -223,9 +223,9 @@ interface FormRequest {
 }
 
 type FormField =
-  | { id: string; type: "select"; label: string; options: FormOption[]; default?: string; required?: boolean }
-  | { id: string; type: "multiselect"; label: string; options: FormOption[]; default?: string[]; min?: number; max?: number }
-  | { id: string; type: "text"; label: string; multiline?: boolean; placeholder?: string; default?: string; required?: boolean };
+  | { id: string; type: "select"; label: string; options: FormOption[]; default?: string; required?: boolean; requiredFor?: string[] }
+  | { id: string; type: "multiselect"; label: string; options: FormOption[]; default?: string[]; min?: number; max?: number; requiredFor?: string[] }
+  | { id: string; type: "text"; label: string; multiline?: boolean; placeholder?: string; default?: string; required?: boolean; requiredFor?: string[] };
 
 interface FormOption { value: string; label: string; description?: string }
 
@@ -247,6 +247,8 @@ Rules:
 - A question with fixed choices and no fields is a body plus actions. The chosen `action` is the answer.
 - `text` with `multiline` and a `default` is the edit-with-prefill case.
 - Required fields and `min` and `max` are enforced by the host before an action without `skipValidation` is accepted. The producer MUST still validate.
+- `requiredFor` limits `required` (and a multiselect's `min`) to the listed action ids. Without it the requirement applies to every action that validates. With it, pressing any other action skips that requirement and sends the field's current value, which may be empty. `max` and the listed options always apply. Ids that match no action are ignored. A host that does not know `requiredFor` ignores it and applies `required` to every action, so the producer validates what it receives.
+- A typed answer next to fixed choices is one form: a text field with `required: true` and `requiredFor: ["submit"]`, a "Submit answer" action, and one action per fixed choice.
 
 ## 7. Intents defined by the host
 
@@ -273,7 +275,6 @@ Rules:
 
 ## 10. Open items
 
-- `form`: a way to require a field only for some actions (for example a typed answer is required for "Submit" but not for a fixed choice), such as `FormField.requiredFor?: string[]`.
 - `review`: whether the host offers user replies on a thread in v1. Producers may store only one reply per comment, so the host should not offer them until a producer asks.
 - `review`: whether `touched` includes dismissed comments. Producers decide what to forward to a model, so the host may include them.
 - Delta updates for large graphs (currently wholesale replacement at up to 10 Hz).

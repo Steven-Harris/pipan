@@ -194,6 +194,8 @@ export type FormField =
       options: FormOption[];
       default?: string;
       required?: boolean;
+      /** Action ids that `required` applies to. Absent means every action that validates. */
+      requiredFor?: string[];
     }
   | {
       id: string;
@@ -203,6 +205,8 @@ export type FormField =
       default?: string[];
       min?: number;
       max?: number;
+      /** Action ids that `min` applies to. Absent means every action that validates. */
+      requiredFor?: string[];
     }
   | {
       id: string;
@@ -212,6 +216,8 @@ export type FormField =
       placeholder?: string;
       default?: string;
       required?: boolean;
+      /** Action ids that `required` applies to. Absent means every action that validates. */
+      requiredFor?: string[];
     };
 
 export interface FormAction {

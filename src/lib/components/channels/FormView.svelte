@@ -3,6 +3,7 @@
   // `onanswer` with the answer once an action passes validation.
   import {
     buildAnswer,
+    appliesTo,
     defaultAction,
     initialValues,
     needsValidation,
@@ -19,14 +20,15 @@
   // svelte-ignore state_referenced_locally
   let values = $state<FormValues>(initialValues(form));
   let errors = $state<FormErrors>({});
-  let attempted = $state(false);
+  /** The action whose validation last ran. Later edits revalidate against it. */
+  let attemptedAction = $state<string | null>(null);
 
   const fields = $derived(form.fields ?? []);
   /** Native select beyond this many options. */
   const RADIO_LIMIT = 6;
 
   function revalidate() {
-    if (attempted) errors = validateValues(form, values);
+    if (attemptedAction !== null) errors = validateValues(form, values, attemptedAction);
   }
 
   function setText(field: FormField, value: string) {
@@ -42,8 +44,8 @@
 
   function press(action: FormAction) {
     if (needsValidation(action)) {
-      attempted = true;
-      errors = validateValues(form, values);
+      attemptedAction = action.id;
+      errors = validateValues(form, values, action.id);
       if (Object.keys(errors).length > 0) {
         const firstId = fields.find((f) => errors[f.id])?.id;
         if (firstId) document.getElementById(`field-${firstId}`)?.focus();
@@ -58,6 +60,14 @@
     const action = defaultAction(form);
     if (action) press(action);
   }
+
+  /** The action that decides which requirements show: the last one pressed, else the Enter action. */
+  const currentActionId = $derived(attemptedAction ?? defaultAction(form)?.id);
+  /** True when the field's requirement applies to the current action. */
+  const applies = (field: FormField): boolean =>
+    currentActionId === undefined ? field.requiredFor === undefined : appliesTo(field, currentActionId);
+  /** Marks a select or text field as required while the current action needs it. */
+  const marked = (field: FormField): boolean => field.type !== 'multiselect' && field.required === true && applies(field);
 
   const actionClass = (style: FormAction['style']) =>
     style === 'primary'
@@ -82,7 +92,7 @@
       {#if field.type === 'select' && field.options.length <= RADIO_LIMIT}
         <fieldset class="space-y-1.5" aria-describedby={error ? errorId : undefined}>
           <legend class="mb-1 font-medium text-zinc-100">
-            {field.label}{#if field.required}<span class="text-red-400" aria-hidden="true"> *</span>{/if}
+            {field.label}{#if marked(field)}<span class="text-red-400" aria-hidden="true"> *</span>{/if}
           </legend>
           {#each field.options as option, i (option.value)}
             <label class="flex cursor-pointer items-start gap-2 rounded-md px-1 py-0.5 hover:bg-zinc-800/60">
@@ -109,7 +119,7 @@
       {:else if field.type === 'select'}
         <div>
           <label for="field-{field.id}" class="mb-1 block font-medium text-zinc-100">
-            {field.label}{#if field.required}<span class="text-red-400" aria-hidden="true"> *</span>{/if}
+            {field.label}{#if marked(field)}<span class="text-red-400" aria-hidden="true"> *</span>{/if}
           </label>
           <select
             id="field-{field.id}"
@@ -130,12 +140,13 @@
           </select>
         </div>
       {:else if field.type === 'multiselect'}
+        {@const min = applies(field) ? field.min : undefined}
         <fieldset class="space-y-1.5" aria-describedby={error ? errorId : undefined}>
           <legend class="mb-1 font-medium text-zinc-100">
             {field.label}
-            {#if field.min !== undefined || field.max !== undefined}
+            {#if min !== undefined || field.max !== undefined}
               <span class="font-normal text-zinc-500">
-                ({field.min !== undefined ? `min ${field.min}` : ''}{field.min !== undefined && field.max !== undefined
+                ({min !== undefined ? `min ${min}` : ''}{min !== undefined && field.max !== undefined
                   ? ', '
                   : ''}{field.max !== undefined ? `max ${field.max}` : ''})
               </span>
@@ -163,7 +174,7 @@
       {:else if field.type === 'text'}
         <div>
           <label for="field-{field.id}" class="mb-1 block font-medium text-zinc-100">
-            {field.label}{#if field.required}<span class="text-red-400" aria-hidden="true"> *</span>{/if}
+            {field.label}{#if marked(field)}<span class="text-red-400" aria-hidden="true"> *</span>{/if}
           </label>
           {#if field.multiline}
             <textarea

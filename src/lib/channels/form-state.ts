@@ -14,17 +14,26 @@ export function initialValues(form: Pick<FormRequest, 'fields'>): FormValues {
   return values;
 }
 
-function fieldError(field: FormField, value: string | string[] | undefined): string | null {
+/**
+ * True when the field's `required` (or a multiselect's `min`) applies to the action. A field
+ * without `requiredFor` applies to every action. Ids in the list that match no action are
+ * harmless, so a stale list cannot break a form.
+ */
+export const appliesTo = (field: FormField, actionId: string): boolean =>
+  field.requiredFor === undefined || field.requiredFor.includes(actionId);
+
+function fieldError(field: FormField, value: string | string[] | undefined, actionId: string): string | null {
+  const strict = appliesTo(field, actionId);
   switch (field.type) {
     case 'select': {
       const chosen = typeof value === 'string' ? value : '';
-      if (chosen === '') return field.required ? 'Choose an option.' : null;
+      if (chosen === '') return field.required && strict ? 'Choose an option.' : null;
       return field.options.some((o) => o.value === chosen) ? null : 'Choose one of the listed options.';
     }
     case 'multiselect': {
       const chosen = Array.isArray(value) ? value : [];
       if (chosen.some((v) => !field.options.some((o) => o.value === v))) return 'Choose only listed options.';
-      if (field.min !== undefined && chosen.length < field.min) {
+      if (strict && field.min !== undefined && chosen.length < field.min) {
         return `Choose at least ${field.min}.`;
       }
       if (field.max !== undefined && chosen.length > field.max) {
@@ -34,16 +43,24 @@ function fieldError(field: FormField, value: string | string[] | undefined): str
     }
     case 'text': {
       const text = typeof value === 'string' ? value : '';
-      return field.required && text.trim() === '' ? 'This field is required.' : null;
+      return field.required && strict && text.trim() === '' ? 'This field is required.' : null;
     }
   }
 }
 
-/** Errors for every invalid field. Empty when the values satisfy the form. */
-export function validateValues(form: Pick<FormRequest, 'fields'>, values: FormValues): FormErrors {
+/**
+ * Errors for every invalid field when the action is pressed. Empty when the values satisfy the
+ * form. `max` and the listed options always apply, `required` and `min` only to the actions a
+ * field's `requiredFor` names.
+ */
+export function validateValues(
+  form: Pick<FormRequest, 'fields'>,
+  values: FormValues,
+  actionId: string
+): FormErrors {
   const errors: FormErrors = {};
   for (const field of form.fields ?? []) {
-    const message = fieldError(field, values[field.id]);
+    const message = fieldError(field, values[field.id], actionId);
     if (message) errors[field.id] = message;
   }
   return errors;

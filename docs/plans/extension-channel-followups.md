@@ -75,7 +75,7 @@ Tasks:
 2. Validator: accept the field; unknown action ids in the list are ignored with no error (a stale id must not break the form).
 3. `form-state.ts`: `validateValues(form, values, actionId)` applies a field's `required` (and `min`) when `requiredFor` is absent, and only when the pressed action is in the list when it is present. `max` and option membership always apply.
 4. `FormView.svelte`: pass the action to the validation call, show `*` on a field only while it applies to the focused or default action, and keep the error text per field.
-5. Docs: spec section 6 and section 10 of the spec (remove from "Not in version 1"), guide `channels.md`, the reference producer (`/demo-form edit` uses it for "Save" vs "Discard"), and the authoring guide.
+5. Docs: spec section 6 and section 10 of the spec (remove from "Not in version 1"), guide `channels.md`, the reference producer (`/demo-form edit` uses it for "Save" vs "Discard", and a new `/demo-form answer` shows choices plus a typed answer), and the authoring guide.
 
 Tests: `form-state.test.ts` for each combination; a harness or store test that answers the reference form with a skipped field.
 

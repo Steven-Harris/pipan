@@ -6,7 +6,7 @@
  * shim every call is a no-op and the producer falls back to plain Pi dialogs. All data is
  * synthetic. Wire format: docs/plans/extension-channel-spec.md.
  *
- * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|body],
+ * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|answer|body],
  * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-timeout <ms>.
  * Each command reports its outcome through a notification that starts with "demo-result:".
  */
@@ -200,11 +200,29 @@ export default function (pi: Pi) {
 		edit: {
 			title: "Edit the message",
 			fields: [
-				{ id: "message", type: "text", label: "Message", multiline: true, required: true, default: "first line\nsecond line" },
+				{
+					id: "message",
+					type: "text",
+					label: "Message",
+					multiline: true,
+					required: true,
+					requiredFor: ["save"],
+					default: "first line\nsecond line",
+				},
 			],
 			actions: [
 				{ id: "save", label: "Save", style: "primary" },
-				{ id: "discard", label: "Discard", style: "danger", skipValidation: true },
+				{ id: "discard", label: "Discard", style: "danger" },
+			],
+		},
+		answer: {
+			title: "Which environment?",
+			body: "Pick a fixed choice, or type a different answer and submit it.",
+			fields: [{ id: "text", type: "text", label: "Other answer", placeholder: "Type an answer", required: true, requiredFor: ["submit"] }],
+			actions: [
+				{ id: "staging", label: "Staging" },
+				{ id: "production", label: "Production" },
+				{ id: "submit", label: "Submit answer", style: "primary" },
 			],
 		},
 		body: {
@@ -218,7 +236,7 @@ export default function (pi: Pi) {
 	};
 
 	pi.registerCommand("demo-form", {
-		description: "Ask a form question (arg: pick, checklist, edit or body); falls back to a plain select without a host",
+		description: "Ask a form question (arg: pick, checklist, edit, answer or body); falls back to a plain select without a host",
 		handler: async (args, ctx) => {
 			if (!supports("form")) {
 				const picked = await ctx.ui.select("Deploy target?", ["staging", "production"]);

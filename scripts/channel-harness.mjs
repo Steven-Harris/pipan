@@ -169,6 +169,17 @@ test("request: answered", async () => {
 	assert(typeof JSON.parse(request.prefill).payload.requestId === "string", "requestId present");
 });
 
+test("request: requiredFor reaches the host and a choice answer carries an empty text", async () => {
+	let seen;
+	responder = answerWith((payload) => {
+		seen = payload.payload;
+		return { action: "staging", values: { text: "" } };
+	});
+	const { results: [r] } = await runCommand("/demo-form answer");
+	eq(seen.fields[0].requiredFor, ["submit"], "requiredFor is passed through unchanged");
+	eq(r.answer, { action: "staging", values: { text: "" } }, "answer");
+});
+
 test("request: cancelled", async () => {
 	responder = answerWith(() => undefined);
 	const { results: [r] } = await runCommand("/demo-form");

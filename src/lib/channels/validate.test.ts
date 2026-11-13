@@ -98,6 +98,21 @@ describe('validateForm', () => {
     actions: [{ id: 'go', label: 'Go' }]
   };
 
+  it('keeps requiredFor on every field type and ignores a malformed one', () => {
+    const result = validateForm({
+      title: 'F',
+      fields: [
+        { id: 's', type: 'select', label: 'S', options: [{ value: 'a', label: 'A' }], required: true, requiredFor: ['go'] },
+        { id: 'm', type: 'multiselect', label: 'M', options: [{ value: 'a', label: 'A' }], min: 1, requiredFor: ['go', 3] },
+        { id: 't', type: 'text', label: 'T', required: true, requiredFor: 'go' }
+      ],
+      actions: [{ id: 'go', label: 'Go' }]
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.fields?.map((f) => f.requiredFor)).toEqual([['go'], ['go'], undefined]);
+  });
+
   it('accepts all three field types', () => {
     const result = validateForm({
       ...base,
