@@ -277,6 +277,22 @@ test("intent: other channels and malformed input are not delivered to this produ
 	eq(results().length, before, "no result for foreign or invalid intents");
 });
 
+test("messages: a displayed and a hidden custom message reach the stream and the history", async () => {
+	const before = events.length;
+	await runCommand("/demo-say");
+	const ended = events.slice(before).filter((e) => e.type === "message_end" && e.message?.role === "custom");
+	eq(ended.map((e) => [e.message.customType, e.message.display]), [["acme.demo-note", true], ["acme.demo-hidden", false]], "custom messages with their display flag");
+	const history = (await rpc({ type: "get_messages" })).data.messages.filter((m) => m.role === "custom" && m.customType.startsWith("acme.demo-"));
+	eq(history.map((m) => m.display), [true, false], "history keeps the display flag");
+});
+
+test("notify: level reaches the stream", async () => {
+	const before = events.length;
+	await prompt("/demo-notify warning");
+	const found = await waitFor(() => events.slice(before).find((e) => e.method === "notify" && e.message === "Synthetic warning notification"), "notification");
+	eq(found.notifyType, "warning", "level");
+});
+
 test("log: entry and message reach the stream", async () => {
 	await runCommand("/demo-log entry");
 	const entry = await waitFor(

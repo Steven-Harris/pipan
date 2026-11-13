@@ -2,7 +2,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
 import { channelPlugins } from '#lib/channels/plugin-api.svelte.ts';
+import { customMessageView } from '#lib/chat/custom-messages.ts';
 import { channels } from '#lib/stores/channels.svelte.ts';
+import { notifications } from '#lib/stores/notifications.svelte.ts';
 import type {
   ChatMessage,
   ContentBlock,
@@ -237,6 +239,7 @@ class ChatStore {
     const unlistenEvent = await listen<PiRpcEvent>('pi:event', (event) => {
       // Extension channel traffic (shim announce, state, requests) is handled by its own store.
       if (channels.handleEvent(this.activeSessionId ?? '', event.payload)) return;
+      if (notifications.handleEvent(this.activeSessionId ?? '', event.payload)) return;
       this.handlePiEvent(event.payload);
       this.syncActiveSessionHistory();
       if (
@@ -851,6 +854,7 @@ class ChatStore {
     try {
       await invoke<boolean>('delete_session', { sessionId });
       channels.forgetSession(sessionId);
+      notifications.forgetSession(sessionId);
       if (sessionId === this.activeSessionId) {
         this.activeSessionId = null;
         this.activeSessionName = 'Untitled Session';
@@ -1169,8 +1173,16 @@ class ChatStore {
     }
   }
 
+  /** The newest message that is not an extension message, which can arrive in the middle of a turn. */
+  private lastConversationMessage(): ChatMessage | undefined {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      if (this.messages[i].role !== 'custom') return this.messages[i];
+    }
+    return undefined;
+  }
+
   private getOrCreateStreamingAssistantMessage(): ChatMessage {
-    const last = this.messages[this.messages.length - 1];
+    const last = this.lastConversationMessage();
     if (last && last.role === 'assistant' && last.isStreaming) {
       return last;
     }
@@ -1407,9 +1419,23 @@ class ChatStore {
   }
 
   private handleMessageEnd(rawMsg?: PiRawMessage): void {
+    if (rawMsg?.role === 'custom') {
+      // Pi sends start and end for a custom message that is complete, so only the end is used.
+      const view = customMessageView(rawMsg);
+      if (view) {
+        this.messages.push({
+          id: makeId(),
+          role: 'custom',
+          customType: view.customType,
+          timestamp: rawMsg.timestamp ?? Date.now(),
+          blocks: [{ type: 'text', text: view.text, isComplete: true }]
+        });
+      }
+      return;
+    }
     if (!rawMsg || rawMsg.role !== 'assistant') return;
 
-    const last = this.messages[this.messages.length - 1];
+    const last = this.lastConversationMessage();
     if (!last || last.role !== 'assistant') return;
 
     last.isStreaming = false;
@@ -1811,6 +1837,20 @@ class ChatStore {
           timestamp: typeof raw.timestamp === 'number' ? raw.timestamp : Date.now(),
           blocks: [{ type: 'text', text: text || '(empty message)', isComplete: true }]
         });
+        continue;
+      }
+
+      if (raw.role === 'custom') {
+        const view = customMessageView(raw);
+        if (view) {
+          reconstructed.push({
+            id: makeId(),
+            role: 'custom',
+            customType: view.customType,
+            timestamp: typeof raw.timestamp === 'number' ? raw.timestamp : Date.now(),
+            blocks: [{ type: 'text', text: view.text, isComplete: true }]
+          });
+        }
         continue;
       }
 

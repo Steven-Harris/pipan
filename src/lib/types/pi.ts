@@ -330,7 +330,10 @@ export type ContentBlock = TextContentBlock | ThinkingContentBlock | ToolCallCon
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  /** `custom` is a message an extension added with `pi.sendMessage` that is meant to be shown. */
+  role: 'user' | 'assistant' | 'custom';
+  /** The extension's label for a `custom` message. */
+  customType?: string;
   timestamp: number;
   blocks: ContentBlock[];
   isStreaming?: boolean;

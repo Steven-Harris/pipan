@@ -129,6 +129,14 @@ pi.events.emit("pipan:log", { ch: CH, name: "note", as: "message", payload: { n:
 
 The host reloads the log when it attaches to a session, so log entries survive a restart of PiPan. A plugin can draw messages with `messageRenderers` (below).
 
+### Messages and notifications for the user
+
+These are plain Pi calls, not channel traffic, and they work in any Pi extension.
+
+- `pi.sendMessage({ customType, content, display: true })` adds a message to the session. PiPan draws it in the chat as a card labelled with `customType`, with `content` rendered as markdown, and draws it again when the session is reloaded. With `display: false` the message is for the model only and PiPan does not show it. Messages whose `customType` starts with `pipan:l:` are channel log messages and are not drawn unless a plugin renders them.
+- `ctx.ui.notify(message, level)` shows a toast. `info` and `warning` toasts leave after a few seconds, and `error` toasts stay until dismissed. Notifications are not part of the transcript, so an important result belongs in a message.
+- A command an extension handles (such as `/demo-form`) is not stored by Pi. It appears in the chat while the session is open and not after a reload.
+
 ## 7. Try it
 
 The harness drives the reference producer through a real Pi process. It needs `pi` on the path and runs offline.

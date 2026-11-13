@@ -18,6 +18,7 @@
   import DoctorModal from '#lib/components/DoctorModal.svelte';
   import SettingsAuthModal from '#lib/components/SettingsAuthModal.svelte';
   import RequestHost from '#lib/components/channels/RequestHost.svelte';
+  import ToastHost from '#lib/components/ToastHost.svelte';
   import { channelAttention } from '#lib/stores/channel-attention.svelte.ts';
 
   onMount(() => {
@@ -93,4 +94,5 @@
   <DoctorModal />
   <SettingsAuthModal />
   <RequestHost />
+  <ToastHost />
 </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { User, Bot, AlertTriangle } from 'lucide-svelte';
+  import { User, Bot, AlertTriangle, Puzzle } from 'lucide-svelte';
+  import Markdown from './channels/Markdown.svelte';
   import type { ChatMessage } from '#lib/types/pi.ts';
   import ThinkingBlock from './ThinkingBlock.svelte';
   import ToolCallCard from './ToolCallCard.svelte';
@@ -63,6 +64,22 @@
       {#each message.blocks as block, idx (idx)}
         {#if block.type === 'text'}
           <div class="whitespace-pre-wrap break-words leading-relaxed">{block.text}</div>
+        {/if}
+      {/each}
+    </div>
+  </div>
+{:else if message.role === 'custom'}
+  <div class="flex justify-start py-2">
+    <div class="w-full max-w-4xl rounded-xl border border-zinc-800/90 bg-zinc-900/30 px-4 py-2.5 text-sm text-zinc-200">
+      <div class="mb-1 flex items-center gap-1.5 text-[11px] text-zinc-500">
+        <Puzzle class="h-3 w-3" />
+        <span>{message.customType}</span>
+        <span>·</span>
+        <span>{formattedTime}</span>
+      </div>
+      {#each message.blocks as block, idx (idx)}
+        {#if block.type === 'text'}
+          <Markdown source={block.text} />
         {/if}
       {/each}
     </div>

@@ -3,6 +3,7 @@
   // durable log and producer errors. Mounted by the root layout only when `import.meta.env.DEV`.
   import { channels } from '#lib/stores/channels.svelte.ts';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import { notifications } from '#lib/stores/notifications.svelte.ts';
 
   let open = $state(false);
 
@@ -11,6 +12,7 @@
   const states = $derived(channels.statesFor(sessionId));
   const pending = $derived(channels.pending[sessionId] ?? []);
   const log = $derived(channels.log[sessionId] ?? []);
+  const notices = $derived(notifications.historyFor(sessionId));
 
   const preview = (value: unknown): string => {
     const text = JSON.stringify(value) ?? '';
@@ -65,6 +67,15 @@
       {#each log.slice(-20) as item (item.entryId)}
         <div class="border-t border-zinc-700 py-1">
           {item.kind} {item.ch} / {item.name}: {preview(item.data)}
+        </div>
+      {:else}
+        <div class="text-zinc-500">none</div>
+      {/each}
+
+      <h3 class="mt-2 font-semibold">Notifications</h3>
+      {#each notices.slice(-20) as item (item.id)}
+        <div class="border-t border-zinc-700 py-1 {item.level === 'error' ? 'text-red-400' : item.level === 'warning' ? 'text-amber-300' : ''}">
+          {new Date(item.at).toLocaleTimeString()} {item.level}: {item.message}
         </div>
       {:else}
         <div class="text-zinc-500">none</div>

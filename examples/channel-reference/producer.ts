@@ -7,7 +7,7 @@
  * synthetic. Wire format: docs/plans/extension-channel-spec.md.
  *
  * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|answer|body],
- * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-timeout <ms>.
+ * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-timeout <ms>, /demo-say, /demo-notify [info|warning|error].
  * Each command reports its outcome through a notification that starts with "demo-result:".
  */
 
@@ -26,6 +26,7 @@ interface Pi {
 		on(channel: string, handler: (data: any) => unknown): unknown;
 		emit(channel: string, data?: unknown): void;
 	};
+	sendMessage(message: { customType: string; content: string; display: boolean; details?: unknown }): void;
 	registerCommand(
 		name: string,
 		options: { description?: string; handler: (args: string, ctx: Ctx) => unknown },
@@ -360,6 +361,30 @@ export default function (pi: Pi) {
 		handler: async (_args, ctx) => {
 			const answer = await request("mystery", { hello: "world" });
 			report(ctx, { answer: answer ?? null });
+		},
+	});
+
+	// Messages and notifications --------------------------------------------------------------
+
+	pi.registerCommand("demo-say", {
+		description: "Add a message to the session: one shown in the chat and one only the model sees",
+		handler: (_args, ctx) => {
+			pi.sendMessage({
+				customType: "acme.demo-note",
+				content: "A **synthetic** note from the demo producer.\n\n- shown in the chat\n- kept in the session",
+				display: true,
+				details: { n: 1 },
+			});
+			pi.sendMessage({ customType: "acme.demo-hidden", content: "A note for the model only.", display: false });
+			report(ctx, { said: 2 });
+		},
+	});
+
+	pi.registerCommand("demo-notify", {
+		description: "Send a notification (arg: info, warning or error)",
+		handler: (args, ctx) => {
+			const level = args.trim() === "warning" || args.trim() === "error" ? (args.trim() as "warning" | "error") : "info";
+			ctx.ui.notify(`Synthetic ${level} notification`, level);
 		},
 	});
 

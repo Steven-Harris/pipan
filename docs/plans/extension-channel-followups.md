@@ -106,8 +106,9 @@ Goal: what an extension says is visible in PiPan, and survives a reload.
 
 Tasks:
 1. Custom messages. Draw `role: "custom"` messages with `display: true` in the transcript, live (`message_end`) and in the history rebuild (`hydrateFromRawMessages`). Show the text as a distinct system card with the extension's `customType` as a small label, rendered with the existing sanitized markdown. Messages with `display: false` stay hidden. Channel log messages (`pipan:l:...`) stay out of the chat unless a plugin renderer exists, as now.
-2. Plugin override. A plugin's `messageRenderers` entry still wins for its own channel's log messages. The new card is the fallback for any other custom message.
-3. Notifications. Show `notify` events as a transient toast (info, warning, error), and also append them to a per-session list kept in the debug view so a missed one can be read. Notifications are not added to the transcript.
+2. Plugin override. A plugin's `messageRenderers` entry still wins for its own channel's log messages. Messages with a `pipan:l:` type are never drawn by the new card, so a log message is shown once or not at all. The card draws every other displayed custom message.
+   Custom messages that arrive in the middle of an assistant turn do not split the streaming assistant message.
+3. Notifications. Show `notify` events as a toast (info, warning, error): info and warning leave after 6 seconds, errors stay until dismissed, at most 5 are on screen. Also keep them in a per-session list (100 at most) shown in the dev debug view, so a missed one can be read. Notifications are not added to the transcript.
 4. Types: add `customType`, `display`, `details` to the raw message type, and a `kind: 'custom'` branch to `ChatMessage`.
 
 Tests: hydrate and live cases for display true and false.
