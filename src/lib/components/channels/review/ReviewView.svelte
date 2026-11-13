@@ -14,6 +14,7 @@
   import type { ReviewAnswer, ReviewChoice, ReviewRequest } from '#lib/channels/types.ts';
   import Markdown from '../Markdown.svelte';
   import DiffReview from './DiffReview.svelte';
+  import DocReview from './DocReview.svelte';
   import { emptyUi } from './review-ui.ts';
 
   let {
@@ -72,8 +73,19 @@
       onreopen={reopen}
       ondismiss={dismiss}
     />
+  {:else if review.subject.type === 'document'}
+    <DocReview
+      subject={review.subject}
+      review={model}
+      {ui}
+      hint={review.commentHint}
+      onadd={add}
+      onedit={edit}
+      onreopen={reopen}
+      ondismiss={dismiss}
+    />
   {:else}
-    <p class="px-4 py-6 text-xs text-zinc-400">This version of PiPan cannot show a document review yet. Cancel to continue.</p>
+    <p class="px-4 py-6 text-xs text-zinc-400">This version of PiPan cannot show this kind of review. Cancel to continue.</p>
   {/if}
 
   <div class="shrink-0 border-t border-zinc-800 px-4 py-3">

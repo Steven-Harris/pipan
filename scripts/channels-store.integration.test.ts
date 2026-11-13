@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { addComment, buildReviewAnswer, createReviewState, dismissComment } from '../src/lib/channels/review-model.ts';
+import { linesText, parseDocument, selectBlock } from '../src/lib/channels/doc-blocks.ts';
+import { addComment, buildReviewAnswer, clipSnippet, createReviewState, dismissComment, reopenComment } from '../src/lib/channels/review-model.ts';
 import type { ReviewRequest } from '../src/lib/channels/types.ts';
 import { buildAnswer, initialValues, validateValues } from '../src/lib/channels/form-state.ts';
 import type { FormRequest } from '../src/lib/channels/types.ts';
@@ -211,6 +212,37 @@ describe.skipIf(!hasPi)('channels store against real Pi', () => {
     expect(answer.comments[0].status).toBe('dismissed');
   });
 
+  it('review: a document comment answers with its source line range', async () => {
+    const { request, finished } = await askAndWait('/demo-review-doc');
+    const review = request.payload as ReviewRequest;
+    expect(review.subject.type).toBe('document');
+    const doc = parseDocument((review.subject as { documents: { text: string }[] }).documents[0]);
+    // "- item one" and "- item two" are blocks 2 and 3; select both.
+    const range = selectBlock(doc.blocks[3], selectBlock(doc.blocks[2], null, false), true);
+    expect(range).toEqual({ line: 5, endLine: 6 });
+    const model = addComment(createReviewState(review.comments), {
+      path: 'notes/design.md',
+      side: 'new',
+      ...range,
+      snippet: clipSnippet(linesText(doc, range.line, range.endLine!)),
+      text: 'Merge these.'
+    }).state;
+    await channels.answer(SID, request.requestId, buildReviewAnswer(model, 'changes'));
+    const answer = (await finished()).answer;
+    expect(answer.touched).toEqual(['tmp-1']);
+    expect(answer.comments[0]).toMatchObject({ line: 5, endLine: 6, side: 'new', snippet: '- item one\n- item two' });
+  });
+
+  it('review: several documents, with an earlier comment on the second', async () => {
+    const { request, finished } = await askAndWait('/demo-review-doc multi');
+    const review = request.payload as ReviewRequest;
+    expect((review.subject as { documents: unknown[] }).documents).toHaveLength(2);
+    expect(review.comments[0].path).toBe('notes/todo.txt');
+    const model = reopenComment(createReviewState(review.comments), 'd1');
+    await channels.answer(SID, request.requestId, buildReviewAnswer(model, 'approve'));
+    expect((await finished()).answer.touched).toEqual([]);
+  });
+
   it('review: the 50,000-line diff arrives and can be answered', async () => {
     const { request, finished } = await askAndWait('/demo-review-diff large');
     const review = request.payload as ReviewRequest;
@@ -219,9 +251,9 @@ describe.skipIf(!hasPi)('channels store against real Pi', () => {
     expect((await finished()).answer.choice).toBe('approve');
   }, 60_000);
 
-  it('a request that is not shown by this version is cancelled so the producer continues', async () => {
-    const { request, finished } = await askAndWait('/demo-review-doc');
-    expect(request.kind).toBe('review');
+  it('a request kind this host does not know is cancelled so the producer continues', async () => {
+    const { request, finished } = await askAndWait('/demo-unknown');
+    expect(request.kind).toBe('mystery');
     await channels.cancel(SID, request.requestId);
     expect((await finished()).answer).toBeNull();
   });

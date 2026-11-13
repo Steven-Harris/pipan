@@ -7,7 +7,7 @@
  * synthetic. Wire format: docs/plans/extension-channel-spec.md.
  *
  * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|body],
- * /demo-review-diff [large], /demo-review-doc, /demo-log [entry|message], /demo-timeout <ms>.
+ * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-timeout <ms>.
  * Each command reports its outcome through a notification that starts with "demo-result:".
  */
 
@@ -268,24 +268,36 @@ export default function (pi: Pi) {
 		},
 	});
 
+	const DESIGN =
+		"# Design\n\nFirst paragraph.\n\n- item one\n- item two\n\nClosing paragraph.\n";
+
 	pi.registerCommand("demo-review-doc", {
-		description: "Ask for a document review",
-		handler: async (_args, ctx) => {
+		description: "Ask for a document review (arg: multi for two documents with an earlier comment)",
+		handler: async (args, ctx) => {
 			if (!supports("review")) return report(ctx, { review: "unsupported" });
+			const multi = args.trim() === "multi";
+			const documents = multi
+				? [
+						{ path: "notes/design.md", text: DESIGN },
+						{ path: "notes/todo.txt", text: "write tests\nship it\n", format: "text" },
+					]
+				: [{ path: "notes/design.md", text: DESIGN }];
 			const answer = await request("review", {
 				title: "Review synthetic design note",
-				subject: {
-					type: "document",
-					documents: [
-						{
-							path: "notes/design.md",
-							text: "# Design\n\nFirst paragraph.\n\n- item one\n- item two\n\nClosing paragraph.\n",
-						},
-					],
-				},
-				comments: [],
+				subject: { type: "document", documents },
+				comments: multi
+					? [{ id: "d1", path: "notes/todo.txt", side: "new", line: 2, text: "Say what ships.", status: "open" }]
+					: [],
 				choices: reviewChoices,
 			});
+			report(ctx, { answer: answer ?? null });
+		},
+	});
+
+	pi.registerCommand("demo-unknown", {
+		description: "Send a request kind this host does not know",
+		handler: async (_args, ctx) => {
+			const answer = await request("mystery", { hello: "world" });
 			report(ctx, { answer: answer ?? null });
 		},
 	});
