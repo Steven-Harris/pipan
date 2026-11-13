@@ -52,7 +52,7 @@ F8 (docs sweep and manual run) -------------> last
 Goal: two producers or topics cannot interfere, and producer data cannot crash a dialog.
 
 Tasks:
-1. Positions key. Change `channel_node_positions` to `PRIMARY KEY (session_id, ch, topic, graph_id, node_id)`. Update `db.rs` (`load`, `save`, `clear` take `ch`, `topic`, `graph_id`), the three Tauri commands in `lib.rs`, `channel-graph-layout.svelte.ts`, and `GraphPanel.svelte`. Migration v5 is not released, so amend v5 in place (see the decision at the end for the alternative). Update `verification.rs` only if it asserts the table shape.
+1. Positions key. Change `channel_node_positions` to `PRIMARY KEY (session_id, ch, topic, graph_id, node_id)`. Update `db.rs` (`load`, `save`, `clear` take `ch`, `topic`, `graph_id`), the three Tauri commands in `lib.rs`, `channel-graph-layout.svelte.ts`, and `GraphPanel.svelte`. Add migration v6 that rebuilds the table: create `channel_node_positions_new` with the new key, copy existing rows with `ch` and `topic` set to an empty string (the old rows carry neither), drop the old table, rename. Update `verification.rs` for the new user version and table shape.
 2. Uniqueness in `validate.ts`. Add `uniqueBy(items, key, path)` and reject, with a path and a message, a diff file `path`, a document `path`, a comment `id`, a form option `value` within one field, and a graph action `id` within one list (graph-level and per node). For graphs, a duplicate action id is dropped with a notice, like other graph over-limit cases, because rejecting a whole graph for a button is harsh. Reviews and forms reject, as today.
 3. Audit every other `{#each ... (key)}` in `src/lib/components/channels` against the list above, and make the debug panel keys safe too.
 4. Docs: add "paths and ids must be unique within a request" to `docs/guide/channels.md` sections 4 to 6.
@@ -61,7 +61,7 @@ Tests: `validate.test.ts` cases for each duplicate; `channel-graph-layout` cases
 
 Acceptance: a review with two files of the same path is rejected and the request is answered `cancelled` with a producer error; two topics with one graph id keep their own dragged positions.
 
-Risks: a developer machine that ran the branch already has the old v5 table. Mitigation: note in the commit message and the plan that `DROP TABLE channel_node_positions;` and `PRAGMA user_version = 4;` (or deleting `pipan.db`) is needed once.
+Risks: copied rows with an empty `ch` and `topic` never match a real graph, so they are orphans. Mitigation: delete them in the migration instead of copying, since positions only matter for the life of a run; the migration test asserts the table is empty and has the new key.
 
 ### F2. `FormField.requiredFor`
 
@@ -105,7 +105,7 @@ Tasks:
 1. Custom messages. Draw `role: "custom"` messages with `display: true` in the transcript, live (`message_end`) and in the history rebuild (`hydrateFromRawMessages`). Show the text as a distinct system card with the extension's `customType` as a small label, rendered with the existing sanitized markdown. Messages with `display: false` stay hidden. Channel log messages (`pipan:l:...`) stay out of the chat unless a plugin renderer exists, as now.
 2. Plugin override. A plugin's `messageRenderers` entry still wins for its own channel's log messages. The new card is the fallback for any other custom message.
 3. Notifications. Show `notify` events as a transient toast (info, warning, error), and also append them to a per-session list kept in the debug view so a missed one can be read. Decision needed on whether notifications also go into the transcript (see decisions).
-4. Optional: record handled prompts. Store `(session_id, text, timestamp)` in a new table `session_commands` (migration v6, cascade delete on the session) when a prompt response has `disposition: "handled"`, and merge them into the history by timestamp, as user messages, when the history is rebuilt. `/pipan-intent` traffic does not pass through chat input and is not recorded. Decision needed.
+4. Optional: record handled prompts. Store `(session_id, text, timestamp)` in a new table `session_commands` (migration v7, cascade delete on the session) when a prompt response has `disposition: "handled"`, and merge them into the history by timestamp, as user messages, when the history is rebuilt. `/pipan-intent` traffic does not pass through chat input and is not recorded. Decision needed.
 5. Types: add `customType`, `display`, `details` to the raw message type, and a `kind: 'custom'` branch to `ChatMessage`.
 
 Tests: hydrate and live cases for display true and false; a handled-command record round trip if task 4 is accepted.
@@ -167,7 +167,7 @@ Goal: everything built is documented, and the unverified paths are exercised in 
 
 Tasks:
 1. Guide changes for F1 to F7, plus a note in the authoring guide that a project-local producer needs the project to be trusted (`/trust`, or an entry in `~/.pi/agent/trust.json`), and that user-level extensions and packages are not affected.
-2. Update `AGENTS.md`: the migration (v5 key, v6 if F4 task 4 is accepted), new commands if any, the dialog bridge, the new chat message kind.
+2. Update `AGENTS.md`: the migrations (v6 position key, v7 if F4 task 4 is accepted), new commands if any, the dialog bridge, the new chat message kind.
 3. Manual run in `pnpm tauri dev` with the reference producer, covering what has not been exercised in the real app: the debug view, graph drag persistence across a restart, every `/demo-*` command, the dialog bridge with a producer that calls `ctx.ui` directly, custom messages after a reload, and a session switch with a pending request.
 
 Acceptance: the checklist in section 7 is complete and recorded.
@@ -178,7 +178,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 
 ## 6. Decisions needed
 
-1. **F1, migration approach.** Amend v5 in place (recommended: it is unreleased and only developer machines have it) or add v6 that rebuilds the table.
+1. **F1, migration approach.** Decided: add v6 that rebuilds the table. v5 stays as shipped on the branch.
 2. **F1, duplicate graph actions.** Drop with a notice (recommended) or reject the whole graph.
 3. **F3, auto-open.** Once per session and topic, as written, or only for topics the producer marks as important (an extra field, more protocol).
 4. **F3, panel cap.** Whether to cap automatically opened panels per session.
