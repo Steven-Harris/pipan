@@ -6,7 +6,7 @@
  * shim every call is a no-op and the producer falls back to plain Pi dialogs. All data is
  * synthetic. Wire format: docs/plans/extension-channel-spec.md.
  *
- * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form,
+ * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|body],
  * /demo-review-diff [large], /demo-review-doc, /demo-log [entry|message], /demo-timeout <ms>.
  * Each command reports its outcome through a notification that starts with "demo-result:".
  */
@@ -141,33 +141,75 @@ export default function (pi: Pi) {
 
 	// Requests --------------------------------------------------------------------------------
 
+	const FORMS: Record<string, unknown> = {
+		pick: {
+			title: "Deploy target",
+			body: "Choose where the **synthetic** build goes.",
+			fields: [
+				{
+					id: "target",
+					type: "select",
+					label: "Target",
+					required: true,
+					options: [
+						{ value: "staging", label: "Staging" },
+						{ value: "production", label: "Production" },
+					],
+				},
+			],
+			actions: [
+				{ id: "go", label: "Deploy", style: "primary" },
+				{ id: "skip", label: "Skip", skipValidation: true },
+			],
+		},
+		checklist: {
+			title: "Steps to run",
+			fields: [
+				{
+					id: "steps",
+					type: "multiselect",
+					label: "Steps",
+					min: 1,
+					max: 2,
+					default: ["lint"],
+					options: [
+						{ value: "lint", label: "Lint" },
+						{ value: "test", label: "Test", description: "Runs the synthetic suite" },
+						{ value: "ship", label: "Ship" },
+					],
+				},
+			],
+			actions: [{ id: "run", label: "Run", style: "primary" }],
+		},
+		edit: {
+			title: "Edit the message",
+			fields: [
+				{ id: "message", type: "text", label: "Message", multiline: true, required: true, default: "first line\nsecond line" },
+			],
+			actions: [
+				{ id: "save", label: "Save", style: "primary" },
+				{ id: "discard", label: "Discard", style: "danger", skipValidation: true },
+			],
+		},
+		body: {
+			title: "Proceed?",
+			body: "Nothing to fill in. The chosen action is the answer.",
+			actions: [
+				{ id: "yes", label: "Yes", style: "primary" },
+				{ id: "no", label: "No" },
+			],
+		},
+	};
+
 	pi.registerCommand("demo-form", {
-		description: "Ask a form question; falls back to a plain select without a host",
-		handler: async (_args, ctx) => {
+		description: "Ask a form question (arg: pick, checklist, edit or body); falls back to a plain select without a host",
+		handler: async (args, ctx) => {
 			if (!supports("form")) {
 				const picked = await ctx.ui.select("Deploy target?", ["staging", "production"]);
 				return report(ctx, { fallback: true, picked: picked ?? null });
 			}
-			const answer = await request("form", {
-				title: "Deploy target",
-				body: "Choose where the **synthetic** build goes.",
-				fields: [
-					{
-						id: "target",
-						type: "select",
-						label: "Target",
-						required: true,
-						options: [
-							{ value: "staging", label: "Staging" },
-							{ value: "production", label: "Production" },
-						],
-					},
-				],
-				actions: [
-					{ id: "go", label: "Deploy", style: "primary" },
-					{ id: "skip", label: "Skip", skipValidation: true },
-				],
-			});
+			const shape = FORMS[args.trim() || "pick"] ?? FORMS.pick;
+			const answer = await request("form", shape);
 			report(ctx, { answer: answer ?? null });
 		},
 	});

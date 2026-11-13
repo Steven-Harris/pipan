@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { buildAnswer, initialValues, validateValues } from '../src/lib/channels/form-state.ts';
+import type { FormRequest } from '../src/lib/channels/types.ts';
 import { channels, type ChannelPiEvent } from '../src/lib/stores/channels.svelte.ts';
 
 const hasPi = !spawnSync('pi', ['--version']).error;
@@ -111,6 +113,91 @@ describe.skipIf(!hasPi)('channels store against real Pi', () => {
     await channels.answer(SID, request.requestId, { action: 'go', values: { target: 'staging' } });
     await until(() => results().length > before, 'producer answer');
     expect(results().at(-1).answer).toEqual({ action: 'go', values: { target: 'staging' } });
+  });
+
+  /** Runs a demo command and waits for its pending request and then its reported result. */
+  const askAndWait = async (command: string) => {
+    const before = results().length;
+    await prompt(command);
+    await until(() => (channels.pending[SID] ?? []).length === 1, `pending request for ${command}`);
+    return { request: channels.pending[SID][0], finished: async () => {
+      await until(() => results().length > before, `result of ${command}`);
+      return results().at(-1);
+    } };
+  };
+
+  it('form: pick one, with validation before the action', async () => {
+    const { request, finished } = await askAndWait('/demo-form pick');
+    const form = request.payload as FormRequest;
+    const values = initialValues(form);
+    expect(validateValues(form, values)).toHaveProperty('target');
+    values.target = 'production';
+    expect(validateValues(form, values)).toEqual({});
+    await channels.answer(SID, request.requestId, buildAnswer(form, 'go', values));
+    expect((await finished()).answer).toEqual({ action: 'go', values: { target: 'production' } });
+  });
+
+  it('form: an action that skips validation answers with empty values', async () => {
+    const { request, finished } = await askAndWait('/demo-form pick');
+    const form = request.payload as FormRequest;
+    await channels.answer(SID, request.requestId, buildAnswer(form, 'skip', initialValues(form)));
+    expect((await finished()).answer).toEqual({ action: 'skip', values: { target: '' } });
+  });
+
+  it('form: checklist honours defaults, min and max', async () => {
+    const { request, finished } = await askAndWait('/demo-form checklist');
+    const form = request.payload as FormRequest;
+    const values = initialValues(form);
+    expect(values.steps).toEqual(['lint']);
+    expect(validateValues(form, { steps: [] })).toHaveProperty('steps');
+    expect(validateValues(form, { steps: ['lint', 'test', 'ship'] })).toHaveProperty('steps');
+    values.steps = ['ship', 'test'];
+    await channels.answer(SID, request.requestId, buildAnswer(form, 'run', values));
+    expect((await finished()).answer).toEqual({ action: 'run', values: { steps: ['test', 'ship'] } });
+  });
+
+  it('form: multiline edit starts from the prefill and returns the edited text', async () => {
+    const { request, finished } = await askAndWait('/demo-form edit');
+    const form = request.payload as FormRequest;
+    const values = initialValues(form);
+    expect(values.message).toBe('first line\nsecond line');
+    values.message = `${values.message}\nthird line`;
+    await channels.answer(SID, request.requestId, buildAnswer(form, 'save', values));
+    expect((await finished()).answer).toEqual({
+      action: 'save',
+      values: { message: 'first line\nsecond line\nthird line' }
+    });
+  });
+
+  it('form: body and actions only', async () => {
+    const { request, finished } = await askAndWait('/demo-form body');
+    const form = request.payload as FormRequest;
+    expect(form.fields).toBeUndefined();
+    await channels.answer(SID, request.requestId, buildAnswer(form, 'no', initialValues(form)));
+    expect((await finished()).answer).toEqual({ action: 'no', values: {} });
+  });
+
+  it('dismissing a request cancels it', async () => {
+    const { request, finished } = await askAndWait('/demo-form pick');
+    await channels.cancel(SID, request.requestId);
+    expect((await finished()).answer).toBeNull();
+    expect(channels.pending[SID] ?? []).toHaveLength(0);
+  });
+
+  it('a request that is not shown by this version is cancelled so the producer continues', async () => {
+    const { request, finished } = await askAndWait('/demo-review-doc');
+    expect(request.kind).toBe('review');
+    await channels.cancel(SID, request.requestId);
+    expect((await finished()).answer).toBeNull();
+  });
+
+  it('a shim timeout closes the pending request', async () => {
+    const before = results().length;
+    await prompt('/demo-timeout 400');
+    await until(() => (channels.pending[SID] ?? []).length === 1, 'pending request');
+    await until(() => (channels.pending[SID] ?? []).length === 0, 'timeout closes the request');
+    await until(() => results().length > before, 'producer told of the timeout');
+    expect(results().at(-1).answer).toBeNull();
   });
 
   it('loads log entries written by the producer', async () => {

@@ -17,6 +17,7 @@
   import PrDetailDrawer from '#lib/components/PrDetailDrawer.svelte';
   import DoctorModal from '#lib/components/DoctorModal.svelte';
   import SettingsAuthModal from '#lib/components/SettingsAuthModal.svelte';
+  import RequestHost from '#lib/components/channels/RequestHost.svelte';
 
   onMount(() => {
     workspaceStore.init();
@@ -89,4 +90,5 @@
   <StatusBar />
   <DoctorModal />
   <SettingsAuthModal />
+  <RequestHost />
 </div>

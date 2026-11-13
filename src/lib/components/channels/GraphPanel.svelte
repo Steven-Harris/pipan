@@ -19,12 +19,12 @@
   import type { ChannelFlowNode } from '#lib/channels/flow-types.ts';
   import { edgeIds, layoutChannelGraph, structureKey, type XY } from '#lib/channels/graph-layout.ts';
   import { TONE_CLASSES, STATUS_STYLES, resolveTone } from '#lib/channels/graph-style.ts';
-  import { renderMarkdown } from '#lib/channels/markdown.ts';
   import type { GraphAction, GraphNode, GraphState } from '#lib/channels/types.ts';
   import { channelGraphLayout } from '#lib/stores/channel-graph-layout.svelte.ts';
   import { channels } from '#lib/stores/channels.svelte.ts';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
   import ChannelGraphNodeCard from './ChannelGraphNode.svelte';
+  import Markdown from './Markdown.svelte';
 
   let { ch, topic }: { ch: string; topic: string } = $props();
 
@@ -127,7 +127,6 @@
   $effect(() => {
     if (selectedId && graph && !selectedNode) selectedId = null;
   });
-  const detailHtml = $derived(selectedNode?.detail?.markdown ? renderMarkdown(selectedNode.detail.markdown) : '');
 
   // ---- Actions ----
   let confirming = $state<{ action: GraphAction; nodeId?: string } | null>(null);
@@ -312,9 +311,8 @@
                     {/if}
                   </dl>
                 {/if}
-                {#if detailHtml}
-                  <!-- Sanitized by renderMarkdown: raw HTML is escaped, images dropped, links restricted. -->
-                  <div class="channel-md text-zinc-300">{@html detailHtml}</div>
+                {#if detail?.markdown}
+                  <div class="text-zinc-300"><Markdown source={detail.markdown} /></div>
                 {/if}
                 {#if selectedNode.actions && selectedNode.actions.length > 0}
                   <div class="flex flex-wrap gap-1.5 border-t border-zinc-800 pt-2.5">
@@ -338,42 +336,3 @@
     </div>
   {/if}
 </div>
-
-<style>
-  .channel-md :global(p) {
-    margin: 0 0 0.5rem;
-  }
-  .channel-md :global(h1),
-  .channel-md :global(h2),
-  .channel-md :global(h3) {
-    margin: 0.5rem 0 0.25rem;
-    font-weight: 600;
-    color: rgb(244 244 245);
-  }
-  .channel-md :global(ul),
-  .channel-md :global(ol) {
-    margin: 0 0 0.5rem 1.1rem;
-    list-style: revert;
-  }
-  .channel-md :global(a) {
-    color: rgb(56 189 248);
-    text-decoration: underline;
-  }
-  .channel-md :global(code) {
-    background: rgb(39 39 42);
-    border-radius: 0.25rem;
-    padding: 0 0.25rem;
-    font-size: 0.7rem;
-  }
-  .channel-md :global(pre) {
-    overflow-x: auto;
-    background: rgb(9 9 11);
-    border-radius: 0.375rem;
-    padding: 0.5rem;
-    margin: 0 0 0.5rem;
-  }
-  .channel-md :global(pre code) {
-    background: none;
-    padding: 0;
-  }
-</style>
