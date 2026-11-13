@@ -75,7 +75,6 @@ describe('capability gate', () => {
 
   it('passes non-channel traffic through', () => {
     expect(channels.handleEvent(S, widget('someone-else', ['x']))).toBe(false);
-    expect(channels.handleEvent(S, { type: 'extension_ui_request', method: 'editor', id: 'e', title: 'Edit' })).toBe(false);
     expect(channels.handleEvent(S, { type: 'agent_start' })).toBe(false);
     expect(channels.handleEvent(S, { type: 'response', id: 'abc', command: 'get_state' })).toBe(false);
     expect(sent).toEqual([]);
@@ -436,5 +435,107 @@ describe('log', () => {
     announce();
     await vi.advanceTimersByTimeAsync(60);
     expect(sent.at(-1)).toMatchObject({ type: 'get_entries', since: 'e1' });
+  });
+});
+
+describe('generic Pi dialogs', () => {
+  const dialog = (method: string, extra: Record<string, unknown> = {}) => ({
+    type: 'extension_ui_request',
+    id: `pi-d${++piId}`,
+    method,
+    title: 'Question',
+    ...extra
+  });
+
+  it('queues a dialog without a shim and answers it in the record shape Pi expects', async () => {
+    expect(channels.isActive(S)).toBe(false);
+    expect(channels.handleEvent(S, dialog('select', { options: ['Allow', 'Block'] }))).toBe(true);
+    const [request] = pendingFor();
+    expect(request).toMatchObject({ kind: 'form', ch: '', piRequestId: 'pi-d1' });
+    expect(request.dialog?.method).toBe('select');
+    await channels.answer(S, request.requestId, { action: 'option:1', values: {} });
+    expect(sent.at(-1)).toEqual({ type: 'extension_ui_response', id: 'pi-d1', value: 'Block' });
+    expect(pendingFor()).toHaveLength(0);
+  });
+
+  it('answers confirm, input and editor', async () => {
+    channels.handleEvent(S, dialog('confirm', { message: 'Sure?' }));
+    channels.handleEvent(S, dialog('input'));
+    channels.handleEvent(S, dialog('editor', { prefill: 'x' }));
+    const [c, i, e] = pendingFor();
+    await channels.answer(S, c.requestId, { action: 'yes', values: {} });
+    await channels.answer(S, i.requestId, { action: 'ok', values: { value: 'typed' } });
+    await channels.answer(S, e.requestId, { action: 'ok', values: { value: 'x\ny' } });
+    expect(sent).toEqual([
+      { type: 'extension_ui_response', id: 'pi-d1', confirmed: true },
+      { type: 'extension_ui_response', id: 'pi-d2', value: 'typed' },
+      { type: 'extension_ui_response', id: 'pi-d3', value: 'x\ny' }
+    ]);
+  });
+
+  it('cancels one dialog, which Pi sees as no answer', async () => {
+    channels.handleEvent(S, dialog('confirm'));
+    await channels.cancel(S, pendingFor()[0].requestId);
+    expect(sent).toEqual([{ type: 'extension_ui_response', id: 'pi-d1', cancelled: true }]);
+  });
+
+  it('cancels a select that has nothing to choose', () => {
+    channels.handleEvent(S, dialog('select', { options: [] }));
+    expect(pendingFor()).toHaveLength(0);
+    expect(cancelledIds()).toEqual(['pi-d1']);
+  });
+
+  it('leaves plan-gate approvals and other methods alone', () => {
+    expect(channels.handleEvent(S, dialog('select', { title: 'PIPAN_APPROVAL::{}', options: ['a'] }))).toBe(false);
+    expect(channels.handleEvent(S, dialog('notify', { message: 'hi' }))).toBe(false);
+    expect(pendingFor()).toHaveLength(0);
+  });
+
+  it('does not treat a channel request as a dialog', () => {
+    announce();
+    channels.handleEvent(S, requestEvent('form', 'r1', form));
+    expect(pendingFor()[0].dialog).toBeUndefined();
+    expect(pendingFor()[0].ch).toBe(CH);
+  });
+
+  it('shares the queue limit and the rate limit with channel requests', () => {
+    for (let i = 0; i < MAX_PENDING_REQUESTS + 2; i++) channels.handleEvent(S, dialog('confirm'));
+    expect(pendingFor()).toHaveLength(MAX_PENDING_REQUESTS);
+    expect(cancelledIds()).toHaveLength(2);
+  });
+
+  it('closes the modal when Pi times the dialog out, without sending a response', () => {
+    channels.handleEvent(S, dialog('confirm', { timeout: 5000 }));
+    expect(pendingFor()).toHaveLength(1);
+    vi.advanceTimersByTime(4999);
+    expect(pendingFor()).toHaveLength(1);
+    vi.advanceTimersByTime(2);
+    expect(pendingFor()).toHaveLength(0);
+    expect(sent).toEqual([]);
+  });
+
+  it('does not let a stale timer remove a later request, and stops it after an answer', async () => {
+    channels.handleEvent(S, dialog('confirm', { timeout: 5000 }));
+    await channels.answer(S, pendingFor()[0].requestId, { action: 'no', values: {} });
+    channels.handleEvent(S, dialog('confirm'));
+    vi.advanceTimersByTime(6000);
+    expect(pendingFor()).toHaveLength(1);
+  });
+
+  it('cancels every dialog on a session change and drops the timers', async () => {
+    channels.handleEvent(S, dialog('confirm', { timeout: 5000 }));
+    channels.handleEvent(S, dialog('input'));
+    await channels.beforeSessionChange();
+    expect(cancelledIds()).toEqual(['pi-d1', 'pi-d2']);
+    expect(pendingFor()).toHaveLength(0);
+    sent = [];
+    vi.advanceTimersByTime(10_000);
+    expect(sent).toEqual([]);
+  });
+
+  it('drops dialogs and timers when the process exits', () => {
+    channels.handleEvent(S, dialog('confirm', { timeout: 5000 }));
+    channels.processExited();
+    expect(pendingFor()).toHaveLength(0);
   });
 });

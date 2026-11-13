@@ -71,7 +71,11 @@
     <div class="min-w-0">
       <h2 id={titleId} class="truncate text-sm font-semibold">{title}</h2>
       <p class="text-[11px] text-zinc-500">
-        Requested by <code class="rounded bg-zinc-800 px-1 text-zinc-300">{request.ch}</code>
+        {#if request.dialog}
+          Requested by an extension
+        {:else}
+          Requested by <code class="rounded bg-zinc-800 px-1 text-zinc-300">{request.ch}</code>
+        {/if}
         {#if waiting > 0}<span class="ml-1">- {waiting} more waiting</span>{/if}
       </p>
     </div>

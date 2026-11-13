@@ -42,8 +42,12 @@ createInterface({ input: pi.stdout }).on("line", (line) => {
 		return;
 	}
 	events.push(event);
-	// Answer editor requests through the scenario's current responder.
-	if (event.type === "extension_ui_request" && event.method === "editor") responder(event);
+	// Channel requests are editor dialogs titled pipan:r:...; the scenario's responder answers them.
+	// Any other dialog goes to the dialog responder.
+	if (event.type === "extension_ui_request" && ["select", "confirm", "input", "editor"].includes(event.method)) {
+		if (event.method === "editor" && event.title?.startsWith("pipan:r:")) responder(event);
+		else dialogResponder(event);
+	}
 	for (const check of [...waiters]) check();
 });
 
@@ -94,6 +98,7 @@ const decodeWidget = (event) => JSON.parse(event.widgetLines.join(""));
 const envelope = (ch, payload) => ({ v: 1, ch, payload });
 
 let responder = () => {};
+let dialogResponder = () => {};
 const answerWith = (payloadFor) => (event) => {
 	const request = JSON.parse(event.prefill);
 	const value = payloadFor(request.payload, event);
@@ -232,6 +237,33 @@ test("resync: re-emits cached state and announces", async () => {
 	// The graph topic was cleared earlier, so it must not come back.
 	const graphKey = `pipan:s:${CH}:graph`;
 	assert(widgets(graphKey).at(-1).widgetLines === undefined, "cleared topic is not resurrected");
+});
+
+test("dialogs: plain Pi dialogs reach the host as extension_ui_request records and take Pi's response shape", async () => {
+	const seen = [];
+	dialogResponder = (event) => {
+		seen.push(event);
+		const reply =
+			event.method === "select" ? { value: event.options[1] }
+			: event.method === "confirm" ? { confirmed: true }
+			: event.method === "input" ? { value: "typed" }
+			: { value: "edited" };
+		send({ type: "extension_ui_response", id: event.id, ...reply });
+	};
+	const answers = {};
+	for (const method of ["select", "confirm", "input", "editor"]) {
+		const { results: [r] } = await runCommand(`/demo-dialog ${method}`);
+		answers[method] = r.answer;
+	}
+	eq(answers, { select: "Block", confirm: true, input: "typed", editor: "edited" }, "values reach the extension");
+	eq(seen.map((e) => e.method), ["select", "confirm", "input", "editor"], "one request per dialog");
+	eq(seen[0].options, ["Allow", "Block"], "options are sent");
+	dialogResponder = (event) => send({ type: "extension_ui_response", id: event.id, cancelled: true });
+	const { results: [cancelled] } = await runCommand("/demo-dialog confirm");
+	eq(cancelled.answer, false, "a cancelled confirm is false");
+	const { results: [none] } = await runCommand("/demo-dialog select");
+	eq(none.answer, null, "a cancelled select is undefined");
+	dialogResponder = () => {};
 });
 
 test("graph approval: the waiting node comes with a form request, and approving advances the run", async () => {

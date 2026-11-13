@@ -271,6 +271,24 @@ Rules:
 - Payloads that fail validation are dropped. The host shows "Extension `<ch>` sent an invalid `<primitive>`" with details in the stderr log pane. For a request it answers `cancelled`.
 - The UI shows the channel id as "requested by `<ch>`" on every request surface.
 
+### Pi's own dialogs
+
+An extension that calls `ctx.ui.select`, `confirm`, `input` or `editor` needs no shim and no channel. Pi sends each call as an `extension_ui_request`, and the host shows it in the same modal and queue as channel requests, headed "Requested by an extension" because Pi does not say which extension asked.
+
+| Pi call | Shown as | Answered with |
+|---|---|---|
+| `select(title, options)` | one button per option for four or fewer, otherwise a required select field | `value`: the chosen option text |
+| `confirm(title, message)` | the message with Yes and No | `confirmed: true` or `false` |
+| `input(title, placeholder)` | a text field | `value`: the text, which may be empty |
+| `editor(title, prefill)` | a multiline text field holding the prefill | `value`: the text |
+
+- Titles, messages and option labels are plain text. Markdown in a message is shown as typed.
+- Cancel, Esc, a session change and a process exit answer `cancelled: true`, which Pi turns into `undefined` for `select`, `input` and `editor` and `false` for `confirm`.
+- A `select` with no options is cancelled at once. At most 500 options are shown, with a note saying how many were left out.
+- If the call has a `timeout`, Pi resolves the dialog on its own when it expires and the host closes the modal at the same moment, without sending a response.
+- These dialogs count against the same limits as channel requests: 20 pending, and 60 per minute for a session.
+- Plan-gate approvals for subagents are not shown here. PiPan answers them separately.
+
 ## 9. Versioning
 
 - The envelope `v` and each primitive's version are independent. This document defines envelope `v: 1` and `graph`, `review` and `form` at version 1.

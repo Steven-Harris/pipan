@@ -51,7 +51,7 @@
       <h3 class="mt-2 font-semibold">Pending requests</h3>
       {#each pending as request (request.requestId)}
         <div class="border-t border-zinc-700 py-1">
-          <div>{request.ch} / {request.kind} ({request.requestId})</div>
+          <div>{request.dialog ? `dialog:${request.dialog.method}` : request.ch} / {request.kind} ({request.requestId})</div>
           <div class="text-zinc-400">{preview(request.payload)}</div>
           <button
             type="button"

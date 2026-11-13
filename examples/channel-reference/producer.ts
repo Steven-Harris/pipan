@@ -7,7 +7,7 @@
  * synthetic. Wire format: docs/plans/extension-channel-spec.md.
  *
  * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|answer|body],
- * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-timeout <ms>, /demo-say, /demo-notify [info|warning|error].
+ * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-timeout <ms>, /demo-say, /demo-notify [info|warning|error], /demo-dialog [select|confirm|input|editor].
  * Each command reports its outcome through a notification that starts with "demo-result:".
  */
 
@@ -17,6 +17,9 @@ interface Ctx {
 	ui: {
 		notify(message: string, type?: "info" | "warning" | "error"): void;
 		select(title: string, options: string[]): Promise<string | undefined>;
+		confirm(title: string, message: string): Promise<boolean>;
+		input(title: string, placeholder?: string): Promise<string | undefined>;
+		editor(title: string, prefill?: string): Promise<string | undefined>;
 	};
 }
 
@@ -385,6 +388,22 @@ export default function (pi: Pi) {
 		handler: (args, ctx) => {
 			const level = args.trim() === "warning" || args.trim() === "error" ? (args.trim() as "warning" | "error") : "info";
 			ctx.ui.notify(`Synthetic ${level} notification`, level);
+		},
+	});
+
+	// Plain Pi dialogs ------------------------------------------------------------------------
+
+	// These are ordinary `ctx.ui` calls, not channel requests. PiPan shows them as dialogs too.
+	pi.registerCommand("demo-dialog", {
+		description: "Ask with a plain Pi dialog (arg: select, confirm, input or editor)",
+		handler: async (args, ctx) => {
+			const method = args.trim() || "select";
+			let answer: unknown;
+			if (method === "confirm") answer = await ctx.ui.confirm("Proceed?", "This is a synthetic confirmation.");
+			else if (method === "input") answer = await ctx.ui.input("Enter a value", "type here");
+			else if (method === "editor") answer = await ctx.ui.editor("Edit the text", "first line\nsecond line");
+			else answer = await ctx.ui.select("Allow the synthetic action?", ["Allow", "Block"]);
+			report(ctx, { method, answer: answer ?? null });
 		},
 	});
 

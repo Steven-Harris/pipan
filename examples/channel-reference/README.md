@@ -15,6 +15,7 @@ Copy `producer.ts` to `~/.pi/agent/extensions/` (or `.pi/extensions/` in a proje
 | `/demo-unknown` | Send a request kind the host does not know |
 | `/demo-timeout <ms>` | Ask a question nobody answers, to see it time out |
 | `/demo-log [entry\|message]` | Write a log entry or message |
+| `/demo-dialog [select\|confirm\|input\|editor]` | Ask with a plain Pi dialog (no channel involved) |
 | `/demo-say` | Add one message that is shown in the chat and one that only the model sees |
 | `/demo-notify [info\|warning\|error]` | Send a notification, shown as a toast |
 

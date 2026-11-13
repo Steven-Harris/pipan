@@ -34,7 +34,8 @@ import {
   MAX_REQUESTS_PER_WINDOW,
   REQUEST_RATE_WINDOW_MS
 } from '#lib/channels/limits.ts';
-import type { HostInfo } from '#lib/channels/types.ts';
+import { dialogResponse, dialogToForm, isDialogMethod, parseDialog, type PiDialog } from '#lib/channels/dialog-bridge.ts';
+import type { FormAnswer, HostInfo } from '#lib/channels/types.ts';
 import { validateRequest, validateState } from '#lib/channels/validate.ts';
 
 export interface ChannelTransport {
@@ -70,6 +71,8 @@ export interface PendingRequest {
   payload: unknown;
   notices: string[];
   receivedAt: number;
+  /** Set when the request stands in for one of Pi's generic dialogs. `ch` is then empty. */
+  dialog?: PiDialog;
 }
 
 export interface LogItem {
@@ -134,6 +137,7 @@ class ChannelsStore {
   private lastCommit = new Map<string, number>();
   private nextId = 0;
   private nextErrorId = 0;
+  private dialogTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private graphListeners = new Set<(commit: GraphCommit) => void>();
   private resetListeners = new Set<() => void>();
 
@@ -220,7 +224,61 @@ class ChannelsStore {
       this.onRequest(sessionId, event);
       return true;
     }
+    if (isDialogMethod(method)) {
+      // Plan-gate approvals and malformed requests are left alone.
+      const dialog = parseDialog(event);
+      if (!dialog) return false;
+      this.onDialog(sessionId, dialog);
+      return true;
+    }
     return false;
+  }
+
+  /** Queues one of Pi's generic dialogs as a form. Pi does not say which extension asked. */
+  private onDialog(sessionId: string, dialog: PiDialog): void {
+    if (dialog.method === 'select' && dialog.options.length === 0) {
+      this.cancelPiRequest(dialog.id);
+      return;
+    }
+    if (!this.allowRequest(sessionId)) {
+      this.addError(sessionId, 'extension', 'An extension sent too many dialogs; this one was cancelled');
+      this.cancelPiRequest(dialog.id);
+      return;
+    }
+    const queue = this.pending[sessionId] ?? [];
+    if (queue.length >= MAX_PENDING_REQUESTS) {
+      this.addError(sessionId, 'extension', 'An extension has too many pending dialogs; this one was cancelled');
+      this.cancelPiRequest(dialog.id);
+      return;
+    }
+    const requestId = `dialog:${dialog.id}`;
+    this.pending = {
+      ...this.pending,
+      [sessionId]: [
+        ...queue,
+        {
+          sessionId,
+          piRequestId: dialog.id,
+          requestId,
+          ch: '',
+          kind: 'form',
+          payload: dialogToForm(dialog),
+          notices: [],
+          receivedAt: Date.now(),
+          dialog
+        }
+      ]
+    };
+    // Pi resolves a dialog with a timeout by itself, so the host only has to close the modal.
+    if (dialog.timeoutMs !== undefined) {
+      this.dialogTimers.set(
+        requestId,
+        setTimeout(() => {
+          this.dialogTimers.delete(requestId);
+          this.removePending(sessionId, requestId);
+        }, dialog.timeoutMs)
+      );
+    }
   }
 
   private onAnnounce(sessionId: string, lines: string[] | undefined): void {
@@ -419,6 +477,10 @@ class ChannelsStore {
   async answer(sessionId: string, requestId: string, answer: unknown): Promise<void> {
     const request = this.removePending(sessionId, requestId);
     if (!request) return;
+    if (request.dialog) {
+      await this.send(dialogResponse(request.dialog, answer as FormAnswer));
+      return;
+    }
     await this.send({
       type: 'extension_ui_response',
       id: request.piRequestId,
@@ -438,6 +500,7 @@ class ChannelsStore {
   async cancelAll(): Promise<void> {
     const all = Object.values(this.pending).flat();
     this.pending = {};
+    this.clearDialogTimers();
     await Promise.all(all.map((r) => this.send(cancelledResponse(r.piRequestId))));
   }
 
@@ -483,6 +546,7 @@ class ChannelsStore {
    */
   processExited(): void {
     this.notifyReset();
+    this.clearDialogTimers();
     this.hosts = {};
     this.states = {};
     this.dropAllHeld();
@@ -606,10 +670,22 @@ class ChannelsStore {
     const queue = this.pending[sessionId] ?? [];
     const found = queue.find((r) => r.requestId === requestId);
     if (!found) return undefined;
+    this.clearDialogTimer(requestId);
     const rest = queue.filter((r) => r !== found);
     const { [sessionId]: _old, ...others } = this.pending;
     this.pending = rest.length > 0 ? { ...others, [sessionId]: rest } : others;
     return found;
+  }
+
+  private clearDialogTimer(requestId: string): void {
+    const timer = this.dialogTimers.get(requestId);
+    if (timer) clearTimeout(timer);
+    this.dialogTimers.delete(requestId);
+  }
+
+  private clearDialogTimers(): void {
+    for (const timer of this.dialogTimers.values()) clearTimeout(timer);
+    this.dialogTimers.clear();
   }
 
   private clearStates(sessionId: string): void {
