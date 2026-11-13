@@ -183,7 +183,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 4. **F3, panel cap.** Decided: at most 4 panels are opened automatically per session. Further topics stay available in the "+" picker.
 5. **F4, notifications.** Decided: toast only, plus the per-session list in the debug view. Nothing is added to the transcript. Error toasts stay until dismissed.
 6. **F4, handled-command record.** Decided: not recorded. A prompt that an extension command handles is not stored by Pi, and the history after a reload matches Pi's own behavior. Revisit with a `session_commands` table if it becomes a problem.
-7. **F5, scope.** Whether the dialog bridge belongs in this work or in a separate plan. It is the largest item here and it is not about channels, but without it any extension that uses Pi's dialogs hangs in PiPan.
+7. **F5, scope.** Decided: the dialog bridge stays on this branch as its own milestone and commit. The PR split can still make it a separate PR.
 8. **F5, provenance wording** for bridged dialogs, since Pi does not say which extension asked.
 9. **F7, package.** JSON Schema in the docs site only, or also an npm package of types.
 
