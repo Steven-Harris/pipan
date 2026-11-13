@@ -4,7 +4,7 @@
 
 - **Goal:** close the gaps found after the extension channel milestones (M0 to M6) were built, so a long-running producer, one that runs for minutes, asks questions, and publishes a live graph, works well in PiPan.
 - **Source of the items:** a manual run of the reference producer in `pnpm tauri dev` (recorded in section 6a of [extension-channel-implementation.md](./extension-channel-implementation.md)), and a review of what a producer with a large graph and many asks needs from the host.
-- **Scope:** PiPan side only. Nothing here changes the wire protocol except one additive form field (F2) and one behavior change to the spec (F3).
+- **Scope:** PiPan side only. Nothing here changes the wire protocol except one additive form field (F2), removing request expiry (F6), and one behavior change to the spec (F3).
 - **Constraint:** PiPan is public and MIT-licensed. No code, docs, tests, fixtures or commits may name or copy any internal or third-party extension. Fixtures are synthetic.
 - **Branch:** `feat/extension-channel`, continuing from M6. One commit per milestone.
 
@@ -29,7 +29,7 @@ Each was checked against the code or the Pi 1.5.0 docs.
 - Fix correctness bugs first (F1). They are small and block nothing else.
 - Protocol changes are additive and do not bump a primitive version (spec section 9). F2 follows that rule.
 - Everything a producer controls is untrusted. Any new host feature that renders producer or extension text goes through the existing sanitizer.
-- A pending request or dialog always has a way out: Cancel, Esc, a timeout, a session change, or the process exiting.
+- A pending request or dialog always has a way out: Cancel, Esc, a session change, or the process exiting. PiPan adds no timer of its own. A timeout that Pi sends with a bridged dialog (F5) is honored.
 - No new background polling. New host UI reuses the request modal, the queue and the cancel rules already built.
 
 ## 3. Dependency order
@@ -40,7 +40,7 @@ F2 (requiredFor) --------------------------> independent
 F3 (graph attention) ----------------------> independent
 F4 (messages in chat) ---------------------> independent
 F5 (dialog bridge) ------------------------> after F2 (uses form fields and requiredFor-free forms) and after F4 decisions on notify
-F6 (switch guard) -------------------------> after F5 (the guard covers bridged dialogs too)
+F6 (request lifecycle) --------------------> after F5 (the guard covers bridged dialogs too)
 F7 (type distribution) --------------------> after F1 and F2 (the schema must be final)
 F8 (docs sweep and manual run) -------------> last
 ```
@@ -131,20 +131,22 @@ Acceptance: a producer using `ctx.ui.select` and `ctx.ui.confirm` gets answers i
 
 Risks: dialogs can come in bursts from a misbehaving extension. Mitigation: the existing bounded queue and rate limit. Another risk is hiding a security-relevant confirm among others. Mitigation: bridged dialogs show their title and message in full and cannot be dismissed by clicking outside.
 
-### F6. Switching sessions with a pending request
+### F6. Pending request lifecycle
 
-Goal: the user does not lose a pending ask by clicking elsewhere.
+Goal: a request waits for the user for as long as it takes, and the user does not lose it by clicking elsewhere.
 
 Tasks:
+0. Remove request expiry. The shim no longer times requests out and no longer writes the `pipan:x:<requestId>` widget; `timeoutMs` is dropped from the producer request options. The host removes the expiry handling for that widget in `channels.svelte.ts` and `codec.ts`. A request now ends by an answer, Cancel or Esc, a session change, or the process exiting. Remove `/demo-timeout` from the reference producer, the harness and the integration test, and update spec sections 3 and 8, the guide, the authoring guide and the producer README. Keep a producer-side rule in the guide: a producer that cannot wait forever must race its own timer against the request and decide what to do, since PiPan will not cancel it.
+
 1. Guard. When the user starts a session switch, new chat, or stop while the pending queue is non-empty, show a confirm ("1 request is waiting. Switching cancels it.") with Switch and Stay. The existing cancel behavior stays for the confirmed case.
 2. Because the request modal is blocking, the guard only matters for a switch started by code (a keyboard shortcut or an extension intent). Check which entry points can run while a modal is open, and cover those.
 3. Update section 6 of the first plan and spec section 8 to say the unviewed-session badge is not needed because only the viewed session can have a pending request.
 
-Tests: a store test that a guarded switch leaves requests pending until confirmed.
+Tests: a store test that a guarded switch leaves requests pending until confirmed; the harness no longer expects a timeout answer, and a request stays pending past the old 30 minute limit (use a fake clock in the store test).
 
 Acceptance: with a request pending, an attempted switch asks first, and Stay keeps the modal.
 
-Risks: low. This may reduce to documentation if the modal makes every other entry point unreachable.
+Risks: a forgotten ask blocks its producer until the user cancels or switches sessions. Mitigation: the request modal is always dismissible with Cancel and Esc, and the guide tells producers to treat `cancelled` as a normal answer. The guard may reduce to documentation if the modal makes every other entry point unreachable.
 
 ### F7. Type distribution for third-party producers
 
@@ -189,7 +191,7 @@ Same rules as the first plan: one local branch, a commit per milestone after the
 
 Carried over from the first plan, still unconfirmed:
 
-10. **Request expiry carrier.** The shim times a request out itself (default 30 minutes, producer `timeoutMs`) and signals the host through a short-lived widget, because an `editor` dialog has no timeout over RPC. Confirm this design.
+10. **Request expiry.** Decided: no expiry. The shim no longer times requests out, and a request waits until it is answered, cancelled, or the session ends. Implemented in F6 task 0.
 11. **Abort does not cancel pending requests.** Spec section 8 was followed, and the first plan's section 3.2 differs. Confirm.
 12. **Markdown sanitizer.** `marked` plus a small hand-written sanitizer (raw HTML escaped, images become alt text, only `http`, `https` and `mailto` links) instead of DOMPurify. Confirm.
 13. **Chunk size unit.** Chunks are 65,536 UTF-16 code units, not bytes. The guide now says characters. Confirm that is acceptable, or change the shim to count bytes.
