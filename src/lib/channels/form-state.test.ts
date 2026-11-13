@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appliesTo, buildAnswer, defaultAction, initialValues, needsValidation, validateValues } from './form-state';
+import { appliesTo, buildAnswer, defaultAction, initialValues, needsValidation, setFieldValue, validateValues } from './form-state';
 import type { FormRequest } from './types';
 
 const opts = [
@@ -147,5 +147,33 @@ describe('requiredFor', () => {
     expect(appliesTo(field, 'submit')).toBe(true);
     expect(appliesTo(field, 'skip')).toBe(false);
     expect(appliesTo(answerForm.fields![3], 'skip')).toBe(true);
+  });
+});
+
+describe('exclusiveWith', () => {
+  const form: FormRequest = {
+    title: 'Q',
+    fields: [
+      { id: 'pick', type: 'select', label: 'Pick', options: [{ value: '0', label: 'A' }], required: true, requiredFor: ['submit'], exclusiveWith: ['text'] },
+      { id: 'text', type: 'text', label: 'Other', required: true, requiredFor: ['submit'], exclusiveWith: ['pick'] }
+    ],
+    actions: [{ id: 'submit', label: 'Submit', style: 'primary' }]
+  };
+
+  it('clears the alternative when a field gets a value, and keeps it when emptied', () => {
+    expect(setFieldValue(form, { pick: '0', text: '' }, 'text', 'typed')).toEqual({ pick: '', text: 'typed' });
+    expect(setFieldValue(form, { pick: '', text: 'typed' }, 'pick', '0')).toEqual({ pick: '0', text: '' });
+    expect(setFieldValue(form, { pick: '0', text: 'x' }, 'text', '')).toEqual({ pick: '0', text: '' });
+  });
+
+  it('meets required with either field and fails with neither', () => {
+    expect(validateValues(form, { pick: '0', text: '' }, 'submit')).toEqual({});
+    expect(validateValues(form, { pick: '', text: 'typed' }, 'submit')).toEqual({});
+    expect(Object.keys(validateValues(form, { pick: '', text: '' }, 'submit')).sort()).toEqual(['pick', 'text']);
+  });
+
+  it('ignores ids that match no field', () => {
+    const odd: FormRequest = { ...form, fields: [{ id: 't', type: 'text', label: 'T', exclusiveWith: ['nope'] }] };
+    expect(setFieldValue(odd, { t: '' }, 't', 'x')).toEqual({ t: 'x' });
   });
 });

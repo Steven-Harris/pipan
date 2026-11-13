@@ -3,6 +3,7 @@
   // `onanswer` with the answer once an action passes validation.
   import {
     buildAnswer,
+    setFieldValue,
     appliesTo,
     defaultAction,
     initialValues,
@@ -25,14 +26,14 @@
 
   const fields = $derived(form.fields ?? []);
   /** Native select beyond this many options. */
-  const RADIO_LIMIT = 6;
+  const RADIO_LIMIT = 12;
 
   function revalidate() {
     if (attemptedAction !== null) errors = validateValues(form, values, attemptedAction);
   }
 
   function setText(field: FormField, value: string) {
-    values[field.id] = value;
+    values = setFieldValue(form, values, field.id, value);
     revalidate();
   }
 
@@ -90,7 +91,7 @@
       {@const error = errors[field.id]}
       {@const errorId = `field-${field.id}-error`}
       {#if field.type === 'select' && field.options.length <= RADIO_LIMIT}
-        <fieldset class="space-y-1.5" aria-describedby={error ? errorId : undefined}>
+        <fieldset class="max-h-72 space-y-1.5 overflow-y-auto" aria-describedby={error ? errorId : undefined}>
           <legend class="mb-1 font-medium text-zinc-100">
             {field.label}{#if marked(field)}<span class="text-red-400" aria-hidden="true"> *</span>{/if}
           </legend>
@@ -104,7 +105,7 @@
                 checked={values[field.id] === option.value}
                 data-autofocus={(index === 0 && i === 0) || undefined}
                 onchange={() => {
-                  values[field.id] = option.value;
+                  values = setFieldValue(form, values, field.id, option.value);
                   revalidate();
                 }}
                 class="mt-0.5 accent-indigo-500"
@@ -128,7 +129,7 @@
             aria-invalid={error ? 'true' : undefined}
             aria-describedby={error ? errorId : undefined}
             onchange={(e) => {
-              values[field.id] = e.currentTarget.value;
+              values = setFieldValue(form, values, field.id, e.currentTarget.value);
               revalidate();
             }}
             class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-zinc-100"

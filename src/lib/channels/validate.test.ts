@@ -98,6 +98,19 @@ describe('validateForm', () => {
     actions: [{ id: 'go', label: 'Go' }]
   };
 
+  it('keeps exclusiveWith on select and text fields and ignores a malformed one', () => {
+    const result = validateForm({
+      title: 'T',
+      fields: [
+        { id: 's', type: 'select', label: 'S', options: [{ value: 'a', label: 'A' }], exclusiveWith: ['t', 3] },
+        { id: 't', type: 'text', label: 'T', exclusiveWith: 's' }
+      ],
+      actions: [{ id: 'go', label: 'Go' }]
+    });
+    if (!result.ok) throw new Error('expected a valid form');
+    expect(result.value.fields?.map((f) => ('exclusiveWith' in f ? f.exclusiveWith : undefined))).toEqual([['t'], undefined]);
+  });
+
   it('keeps requiredFor on every field type and ignores a malformed one', () => {
     const result = validateForm({
       title: 'F',

@@ -339,6 +339,13 @@
                 "type": "string"
               },
               "description": "Action ids that `required` applies to. Absent means every action that validates."
+            },
+            "exclusiveWith": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ids of fields that are alternatives to this one. Filling this field clears them, and one of them filled meets `required`."
             }
           },
           "required": [
@@ -425,6 +432,13 @@
                 "type": "string"
               },
               "description": "Action ids that `required` applies to. Absent means every action that validates."
+            },
+            "exclusiveWith": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ids of fields that are alternatives to this one. Filling this field clears them, and one of them filled meets `required`."
             }
           },
           "required": [

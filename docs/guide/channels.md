@@ -226,9 +226,9 @@ interface FormRequest {
 }
 
 type FormField =
-  | { id: string; type: "select"; label: string; options: FormOption[]; default?: string; required?: boolean; requiredFor?: string[] }
+  | { id: string; type: "select"; label: string; options: FormOption[]; default?: string; required?: boolean; requiredFor?: string[]; exclusiveWith?: string[] }
   | { id: string; type: "multiselect"; label: string; options: FormOption[]; default?: string[]; min?: number; max?: number; requiredFor?: string[] }
-  | { id: string; type: "text"; label: string; multiline?: boolean; placeholder?: string; default?: string; required?: boolean; requiredFor?: string[] };
+  | { id: string; type: "text"; label: string; multiline?: boolean; placeholder?: string; default?: string; required?: boolean; requiredFor?: string[]; exclusiveWith?: string[] };
 
 interface FormOption { value: string; label: string; description?: string }
 
@@ -251,6 +251,7 @@ Rules:
 - `text` with `multiline` and a `default` is the edit-with-prefill case.
 - Required fields and `min` and `max` are enforced by the host before an action without `skipValidation` is accepted. The producer MUST still validate.
 - `requiredFor` limits `required` (and a multiselect's `min`) to the listed action ids. Without it the requirement applies to every action that validates. With it, pressing any other action skips that requirement and sends the field's current value, which may be empty. `max` and the listed options always apply. Ids that match no action are ignored. A host that does not know `requiredFor` ignores it and applies `required` to every action, so the producer validates what it receives.
+- `exclusiveWith` (on `select` and `text` fields) lists ids of fields that are alternatives to this one. Giving this field a non-empty value clears the listed fields, and a listed field with a value meets this field's `required`. Declare it on both fields for a "pick one or type one" pair. Ids that match no field are ignored. A host that does not know `exclusiveWith` keeps both values and applies `required` to each field, so the producer validates what it receives.
 - A typed answer next to fixed choices is one form: a text field with `required: true` and `requiredFor: ["submit"]`, a "Submit answer" action, and one action per fixed choice.
 
 ## 7. Intents defined by the host

@@ -77,7 +77,7 @@ const answer = await request("form", {
 // { action: "go", values: { target: "staging" } }
 ```
 
-The `form` primitive covers a pick-one question, a checklist, free text and an edit with a prefill. To accept either a fixed choice or a typed answer, add a text field with `required: true, requiredFor: ["submit"]` and an action `submit`: the choice actions then send an empty text without an error. The reference producer's `/demo-form` takes `pick`, `checklist`, `edit`, `answer` or `body` to show each shape.
+The `form` primitive covers a pick-one question, a checklist, free text and an edit with a prefill. To accept either a fixed choice or a typed answer, add a text field with `required: true, requiredFor: ["submit"]` and an action `submit`: the choice actions then send an empty text without an error. To accept a select value or a typed answer with the same action, give both fields `required: true`, the same `requiredFor`, and `exclusiveWith` naming each other. The reference producer's `/demo-form` takes `pick`, `checklist`, `edit`, `answer` or `body` to show each shape.
 
 Pi's own dialogs (`ctx.ui.select`, `confirm`, `input`, `editor`) need no shim and work in PiPan: the host shows them as a modal headed "Requested by an extension". Use a channel request when you want the richer form, review or provenance. The reference producer's `/demo-dialog` calls each one.
 

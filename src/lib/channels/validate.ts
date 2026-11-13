@@ -269,6 +269,9 @@ function requiredFor(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : undefined;
 }
 
+/** Ids of alternative fields. Not-a-list values are ignored, as are non-string entries. */
+const exclusiveWith = (value: unknown): string[] | undefined => requiredFor(value);
+
 function formField(value: unknown, path: string): FormField {
   const raw = rec(value, path);
   const id = nonEmpty(raw.id, `${path}.id`);
@@ -282,7 +285,8 @@ function formField(value: unknown, path: string): FormField {
         options: options(raw.options, `${path}.options`),
         default: optStr(raw.default),
         required: optBool(raw.required),
-        requiredFor: requiredFor(raw.requiredFor)
+        requiredFor: requiredFor(raw.requiredFor),
+        exclusiveWith: exclusiveWith(raw.exclusiveWith)
       };
     case 'multiselect':
       return {
@@ -306,7 +310,8 @@ function formField(value: unknown, path: string): FormField {
         placeholder: optStr(raw.placeholder),
         default: optStr(raw.default),
         required: optBool(raw.required),
-        requiredFor: requiredFor(raw.requiredFor)
+        requiredFor: requiredFor(raw.requiredFor),
+        exclusiveWith: exclusiveWith(raw.exclusiveWith)
       };
     default:
       return bad(`${path}.type "${String(raw.type)}" is not a known field type`);

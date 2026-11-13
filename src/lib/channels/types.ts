@@ -191,6 +191,8 @@ export type FormField =
       required?: boolean;
       /** Action ids that `required` applies to. Absent means every action that validates. */
       requiredFor?: string[];
+      /** Ids of fields that are alternatives to this one. Filling this field clears them, and one of them filled meets `required`. */
+      exclusiveWith?: string[];
     }
   | {
       id: string;
@@ -213,6 +215,8 @@ export type FormField =
       required?: boolean;
       /** Action ids that `required` applies to. Absent means every action that validates. */
       requiredFor?: string[];
+      /** Ids of fields that are alternatives to this one. Filling this field clears them, and one of them filled meets `required`. */
+      exclusiveWith?: string[];
     };
 
 export interface FormAction {

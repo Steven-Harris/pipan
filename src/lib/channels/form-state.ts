@@ -22,12 +22,40 @@ export function initialValues(form: Pick<FormRequest, 'fields'>): FormValues {
 export const appliesTo = (field: FormField, actionId: string): boolean =>
   field.requiredFor === undefined || field.requiredFor.includes(actionId);
 
-function fieldError(field: FormField, value: string | string[] | undefined, actionId: string): string | null {
+const filled = (value: string | string[] | undefined): boolean => (Array.isArray(value) ? value.length > 0 : (value ?? '').trim() !== '');
+
+/** True when a field named in `exclusiveWith` has a value, which meets this field's `required`. */
+function alternativeFilled(field: FormField, values: FormValues): boolean {
+  return field.type !== 'multiselect' && (field.exclusiveWith ?? []).some((id) => id !== field.id && filled(values[id]));
+}
+
+/**
+ * The values after `fieldId` changed to `value`: a non-empty value clears the fields that field is exclusive with.
+ * Ids that match no field are ignored.
+ */
+export function setFieldValue(
+  form: Pick<FormRequest, 'fields'>,
+  values: FormValues,
+  fieldId: string,
+  value: string | string[]
+): FormValues {
+  const next: FormValues = { ...values, [fieldId]: value };
+  const field = (form.fields ?? []).find((f) => f.id === fieldId);
+  if (!field || field.type === 'multiselect' || !filled(value)) return next;
+  for (const id of field.exclusiveWith ?? []) {
+    const other = (form.fields ?? []).find((f) => f.id === id);
+    if (other && other.id !== fieldId && other.type !== 'multiselect') next[id] = '';
+  }
+  return next;
+}
+
+function fieldError(field: FormField, value: string | string[] | undefined, actionId: string, values: FormValues): string | null {
   const strict = appliesTo(field, actionId);
+  const met = alternativeFilled(field, values);
   switch (field.type) {
     case 'select': {
       const chosen = typeof value === 'string' ? value : '';
-      if (chosen === '') return field.required && strict ? 'Choose an option.' : null;
+      if (chosen === '') return field.required && strict && !met ? 'Choose an option.' : null;
       return field.options.some((o) => o.value === chosen) ? null : 'Choose one of the listed options.';
     }
     case 'multiselect': {
@@ -43,7 +71,7 @@ function fieldError(field: FormField, value: string | string[] | undefined, acti
     }
     case 'text': {
       const text = typeof value === 'string' ? value : '';
-      return field.required && strict && text.trim() === '' ? 'This field is required.' : null;
+      return field.required && strict && !met && text.trim() === '' ? 'This field is required.' : null;
     }
   }
 }
@@ -60,7 +88,7 @@ export function validateValues(
 ): FormErrors {
   const errors: FormErrors = {};
   for (const field of form.fields ?? []) {
-    const message = fieldError(field, values[field.id], actionId);
+    const message = fieldError(field, values[field.id], actionId, values);
     if (message) errors[field.id] = message;
   }
   return errors;
