@@ -47,9 +47,9 @@ F8 (docs sweep and manual run) -------------> last
 
 ## 4. Milestones
 
-### F1. Saved-position key and keyed-list validation
+### F1. Saved-position key, keyed-list validation and markdown sanitizing
 
-Goal: two producers or topics cannot interfere, and producer data cannot crash a dialog.
+Goal: two producers or topics cannot interfere, producer data cannot crash a dialog, and producer markdown is sanitized by a maintained library.
 
 Tasks:
 1. Positions key. Change `channel_node_positions` to `PRIMARY KEY (session_id, ch, topic, graph_id, node_id)`. Update `db.rs` (`load`, `save`, `clear` take `ch`, `topic`, `graph_id`), the three Tauri commands in `lib.rs`, `channel-graph-layout.svelte.ts`, and `GraphPanel.svelte`. Add migration v6 that rebuilds the table: create `channel_node_positions_new` with the new key, copy existing rows with `ch` and `topic` set to an empty string (the old rows carry neither), drop the old table, rename. Update `verification.rs` for the new user version and table shape.
@@ -57,11 +57,15 @@ Tasks:
 3. Audit every other `{#each ... (key)}` in `src/lib/components/channels` against the list above, and make the debug panel keys safe too.
 4. Docs: add "paths and ids must be unique within a request" to `docs/guide/channels.md` sections 4 to 6.
 
-Tests: `validate.test.ts` cases for each duplicate; `channel-graph-layout` cases showing two topics with the same graph id keep separate positions; a Rust test with two channels saving to the same graph id.
+5. Markdown sanitizing. Replace the hand-written sanitizer in `src/lib/channels/markdown.ts` with DOMPurify, run over the HTML that `marked` produces. Add `dompurify` as a dependency. Configure it with a strict allowlist: no scripts, styles, forms, images or iframes, links limited to `http`, `https` and `mailto` with `rel="noopener noreferrer"` and `target="_blank"` forced by a hook, and no `data-` or `on*` attributes. Images become their alt text through a `marked` renderer override, as now. Keep `safeHref`. `renderMarkdownBlocks` sanitizes each block separately, and the result is the only value passed to `{@html}` (`Markdown.svelte` is the single site). Keep every existing case in `markdown.test.ts` as a regression suite, and add known bypass strings (nested `<svg>` and `<math>` content, `javascript:` and `data:` links, mutation-XSS patterns, HTML inside a table cell or a code fence). DOMPurify needs a DOM, so the tests run in the jsdom or happy-dom environment that the component tests already use.
+
+Tests: `validate.test.ts` cases for each duplicate; `channel-graph-layout` cases showing two topics with the same graph id keep separate positions; a Rust test with two channels saving to the same graph id; the markdown regression and bypass suite.
 
 Acceptance: a review with two files of the same path is rejected and the request is answered `cancelled` with a producer error; two topics with one graph id keep their own dragged positions.
 
-Risks: copied rows with an empty `ch` and `topic` never match a real graph, so they are orphans. Mitigation: delete them in the migration instead of copying, since positions only matter for the life of a run; the migration test asserts the table is empty and has the new key.
+Risks for task 5: a stricter or looser allowlist changes what producers see, for example an `<img>` that used to render alt text. Mitigation: the regression suite covers the current output, and a difference is reviewed, not accepted automatically.
+
+Risks for task 1: copied rows with an empty `ch` and `topic` never match a real graph, so they are orphans. Mitigation: delete them in the migration instead of copying, since positions only matter for the life of a run; the migration test asserts the table is empty and has the new key.
 
 ### F2. `FormField.requiredFor`
 
@@ -193,7 +197,7 @@ Carried over from the first plan, still unconfirmed:
 
 10. **Request expiry.** Decided: no expiry. The shim no longer times requests out, and a request waits until it is answered, cancelled, or the session ends. Implemented in F6 task 0.
 11. **Abort does not cancel pending requests.** Decided: follow the spec (section 8). Stop ends generation only; a request is ended by an answer, Cancel, a session change, or the process exiting. The first plan's section 3.2 is superseded.
-12. **Markdown sanitizer.** `marked` plus a small hand-written sanitizer (raw HTML escaped, images become alt text, only `http`, `https` and `mailto` links) instead of DOMPurify. Confirm.
+12. **Markdown sanitizer.** Decided: DOMPurify over `marked` output, replacing the hand-written sanitizer. Implemented in F1 task 5.
 13. **Chunk size unit.** Chunks are 65,536 UTF-16 code units, not bytes. The guide now says characters. Confirm that is acceptable, or change the shim to count bytes.
 
 ## 7. Verification matrix
