@@ -322,6 +322,12 @@ impl PiRpcManager {
             extra_args.push(OsString::from(thinking_arg));
         }
 
+        // Extension channel: load the shim so other Pi extensions can drive PiPan UI. A failure
+        // to write it only disables the channel.
+        if let Ok(shim_path) = crate::channel::ensure_channel_shim(app_handle) {
+            extra_args.extend(crate::channel::channel_shim_args(&shim_path));
+        }
+
         let cli_args = build_pi_session_args(
             session_file_path_buf.as_deref(),
             Some(session_name.as_str()),

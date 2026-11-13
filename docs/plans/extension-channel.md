@@ -149,3 +149,4 @@ Other observations:
 - State and requests can carry large payloads, so lazy loading is an optimization, not a prerequisite for the first version.
 - Durable history uses `appendEntry` by default, so it stays out of the model's context. `sendMessage` is for content the model should see, and the shim exposes both. The host reloads history with `get_entries` and a `since` cursor.
 - State (section 3.2, item 1) is for the current picture of something. Log entries are for history. A producer republishes state on resync and does not rely on replaying the log to rebuild it.
+- Checked during M1 against Pi 1.5.0: a `get_entries` cursor keeps working after a session file is reloaded, because entry ids are stored in the file. Pi writes the session file only once an assistant message exists, so a cursor taken before that is unknown after a restart and `get_entries` answers `Entry not found`. The host treats that as "reload everything".

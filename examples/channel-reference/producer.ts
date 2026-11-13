@@ -134,7 +134,7 @@ export default function (pi: Pi) {
 		description: "Publish a state of roughly N bytes (for chunking tests)",
 		handler: (args, ctx) => {
 			const bytes = Math.max(1, Number(args) || 1024);
-			state("big", "graph", { blob: "x".repeat(bytes) });
+			state("big", "blob", { blob: "x".repeat(bytes) });
 			report(ctx, { published: bytes });
 		},
 	});

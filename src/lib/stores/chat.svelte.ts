@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
+import { channels } from '#lib/stores/channels.svelte.ts';
 import type {
   ChatMessage,
   ContentBlock,
@@ -229,7 +230,11 @@ class ChatStore {
     if (this.initialized) return;
     this.initialized = true;
 
+    channels.configure({ send: (command) => invoke('send_pi_command', { command }) });
+
     const unlistenEvent = await listen<PiRpcEvent>('pi:event', (event) => {
+      // Extension channel traffic (shim announce, state, requests) is handled by its own store.
+      if (channels.handleEvent(this.activeSessionId ?? '', event.payload)) return;
       this.handlePiEvent(event.payload);
       this.syncActiveSessionHistory();
       if (
@@ -255,6 +260,10 @@ class ChatStore {
       }
       if (event.payload.error) {
         this.lastError = event.payload.error;
+      }
+      if (event.payload.state !== 'running') {
+        // Pending channel requests and state die with the Pi process.
+        channels.processExited();
       }
       if (event.payload.state === 'disconnected' || event.payload.state === 'error') {
         this.isAgentRunning = false;
@@ -290,6 +299,7 @@ class ChatStore {
         this.recordSessionStart(status, status.sessionId ?? undefined, status.name ?? undefined);
         await this.requestState();
         await this.requestMessages();
+        void channels.attach();
       }
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
@@ -838,6 +848,7 @@ class ChatStore {
   async deleteSession(sessionId: string): Promise<void> {
     try {
       await invoke<boolean>('delete_session', { sessionId });
+      channels.forgetSession(sessionId);
       if (sessionId === this.activeSessionId) {
         this.activeSessionId = null;
         this.activeSessionName = 'Untitled Session';
@@ -857,6 +868,10 @@ class ChatStore {
   }
 
   async sendCommand(command: PiRpcCommand): Promise<void> {
+    if (command.type === 'switch_session' || command.type === 'new_session') {
+      // Pi does not cancel dialogs when the session changes, so answer them first.
+      await channels.beforeSessionChange();
+    }
     try {
       await invoke('send_pi_command', { command });
     } catch (err) {
@@ -1748,6 +1763,7 @@ class ChatStore {
     }
 
     if (event.command === 'switch_session') {
+      void channels.attach();
       void this.requestState();
       void this.requestMessages();
       return;
