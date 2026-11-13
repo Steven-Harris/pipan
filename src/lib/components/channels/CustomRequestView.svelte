@@ -36,4 +36,4 @@
     The renderer from <code class="rounded bg-zinc-800 px-1">{request.ch}</code> failed: {failure}. Cancel to continue.
   </div>
 {/if}
-<div bind:this={container} class="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-zinc-300"></div>
+<div bind:this={container} class="min-h-0 flex-auto overflow-y-auto px-4 py-3 text-xs text-zinc-300"></div>

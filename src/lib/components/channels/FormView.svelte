@@ -70,8 +70,8 @@
   const focusActionId = $derived(form.actions.find((a) => a.style !== 'danger')?.id ?? form.actions[0]?.id);
 </script>
 
-<form onsubmit={submit} class="flex min-h-0 flex-1 flex-col" novalidate>
-  <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 text-xs text-zinc-300">
+<form onsubmit={submit} class="flex min-h-0 flex-auto flex-col" novalidate>
+  <div class="min-h-0 flex-auto space-y-4 overflow-y-auto px-4 py-3 text-xs text-zinc-300">
     {#if form.body}
       <div class="max-h-60 overflow-y-auto"><Markdown source={form.body} /></div>
     {/if}
