@@ -157,10 +157,10 @@ Risks: a forgotten ask blocks its producer until the user cancels or switches se
 Goal: authors do not copy interfaces by hand from a page.
 
 Tasks:
-1. Generate a JSON Schema from `src/lib/channels/types.ts` for the three request kinds and the graph state, with a package script (`pnpm channels:schema`) and a drift check in the tests. Publish the schema file under `docs/public/` so the docs site serves it.
+1. Generate a JSON Schema from `src/lib/channels/types.ts` with `ts-json-schema-generator` (dev dependency): `scripts/channels-schema.mjs`, run as `pnpm channels:schema`, reads `scripts/channels-schema-root.ts`, which lists the payloads (`HostInfo`, `GraphState`, `FormRequest`, `FormAnswer`, `ReviewRequest`, `ReviewAnswer`). Output goes to `docs/public/channels.schema.json`, which the docs site serves. Unknown keys are allowed, matching the protocol. A test regenerates the schema and fails when the checked-in file differs.
 2. Link the schema and the types from the guide. The types also stay in the guide. No npm package is published.
 
-Tests: the schema validates the reference producer's payloads and rejects malformed ones.
+Tests (`scripts/channels-schema.test.ts`, with `ajv` as a dev dependency): the file matches a fresh generation; every payload the reference producer emits validates against it and against the host validators; malformed graphs, forms, reviews and answers are rejected.
 
 Acceptance: the schema file is generated, checked in, and validates every payload the reference producer emits.
 

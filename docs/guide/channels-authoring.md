@@ -147,6 +147,8 @@ These are plain Pi calls, not channel traffic, and they work in any Pi extension
 
 ## 7. Try it
 
+The payload types are in the [JSON Schema](/channels.schema.json) that PiPan publishes with these docs. Validating your payloads against it in your own tests catches a misspelled field early.
+
 The harness drives the reference producer through a real Pi process. It needs `pi` on the path and runs offline.
 
 ```bash

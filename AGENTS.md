@@ -266,7 +266,7 @@ Pi extensions drive native PiPan UI through channels. The contract is in `docs/g
 - **Frontend** (`src/lib/channels/`, `src/lib/stores/channels.svelte.ts`): codec, validators, the channel store, and the primitives: `graph` (panel, Dagre layout), `review` (diff and document, line comments) and `form`. `RequestHost.svelte` shows the oldest pending request of the viewed session in a modal. Pending requests are cancelled when the session switches, stops or exits.
 - **Pi dialogs**: `extension_ui_request` records for `select`, `confirm`, `input` and `editor` that are not channel requests are shown as forms in the same modal and queue (`src/lib/channels/dialog-bridge.ts`). Pi's `timeout` closes the modal locally. Plan-gate approvals (`PIPAN_APPROVAL::`) are left to `approval.rs`.
 - **Plugin API**: `window.pipan.channel(id)` gives plugins `subscribe`, `onRequest` and `intent`. `registerExtension` accepts `messageRenderers`, and manifests accept `contributes.channels`.
-- **Tests**: `pnpm test:channel` drives `examples/channel-reference/producer.ts` through a real `pi --mode rpc` process. `pnpm test` covers the store, validators and review model.
+- **Tests**: `pnpm test:channel` drives `examples/channel-reference/producer.ts` through a real `pi --mode rpc` process. `pnpm test` covers the store, validators and review model. `pnpm channels:schema` regenerates `docs/public/channels.schema.json` from `src/lib/channels/types.ts`, and a test fails when the file is stale.
 
 ### f. Dependency Doctor
 

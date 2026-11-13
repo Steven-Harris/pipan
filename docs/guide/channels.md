@@ -4,7 +4,7 @@ Channels let a Pi extension drive native PiPan UI: a live graph panel, a diff or
 
 This page is the protocol reference. [Writing a channel producer](./channels-authoring) walks through the reference producer, and [Extensions](./extensions) covers the plugin side for custom UI.
 
-Conventions: "MUST", "SHOULD" and "MAY" carry their usual meaning. Unknown object keys are ignored. Unknown enum values fall back to the documented default. Text fields are plain text unless named `markdown`, and markdown is sanitized by the host. The canonical TypeScript types are in `src/lib/channels/types.ts`.
+Conventions: "MUST", "SHOULD" and "MAY" carry their usual meaning. Unknown object keys are ignored. Unknown enum values fall back to the documented default. Text fields are plain text unless named `markdown`, and markdown is sanitized by the host. The canonical TypeScript types are in `src/lib/channels/types.ts`. A [JSON Schema](/channels.schema.json) generated from them describes the payloads (below).
 
 ## 1. Roles
 
@@ -293,6 +293,12 @@ An extension that calls `ctx.ui.select`, `confirm`, `input` or `editor` needs no
 - The envelope `v` and each primitive's version are independent. This document defines envelope `v: 1` and `graph`, `review` and `form` at version 1.
 - `HostInfo.primitives` lets a producer pick the highest version both sides understand. A producer sends a primitive's payload shape for the version it negotiated; the shape is not carried in the envelope in v1 because the only version is 1.
 - Adding an optional field is not a version change. Removing or retyping a field, or changing a field's meaning, bumps the primitive's version.
+
+### JSON Schema
+
+[`channels.schema.json`](/channels.schema.json) is generated from the TypeScript types. Validate a payload against one of its definitions: `HostInfo` (the `hello` reply), `GraphState` (a `graph` state), `FormRequest` and `FormAnswer`, `ReviewRequest` and `ReviewAnswer`. With Ajv, add the schema and compile `{ $ref: "channels#/definitions/GraphState" }`.
+
+The schema describes shape only. It allows unknown keys, because the host ignores them. Enum values are listed as the types define them, while a host falls back to the documented default for an unknown value. The host also enforces what a schema cannot say: the limits in section 8, unique ids and paths within a list, and the rules for line numbers in a review. Run `pnpm channels:schema` after changing `types.ts`; a test fails when the checked-in file is out of date.
 
 ## 10. Not in version 1
 
