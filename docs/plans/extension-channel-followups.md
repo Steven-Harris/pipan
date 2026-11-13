@@ -39,7 +39,7 @@ F1 (key fixes) ----------------------------> independent, do first
 F2 (requiredFor) --------------------------> independent
 F3 (graph attention) ----------------------> independent
 F4 (messages in chat) ---------------------> independent
-F5 (dialog bridge) ------------------------> after F2 (uses form fields and requiredFor-free forms) and after F4 decisions on notify
+F5 (dialog bridge) ------------------------> independent of F2 to F4 (reuses the form renderer and the request queue)
 F6 (request lifecycle) --------------------> after F5 (the guard covers bridged dialogs too)
 F7 (type distribution) --------------------> after F1 and F2 (the schema must be final)
 F8 (docs sweep and manual run) -------------> last
@@ -55,8 +55,7 @@ Tasks:
 1. Positions key. Change `channel_node_positions` to `PRIMARY KEY (session_id, ch, topic, graph_id, node_id)`. Update `db.rs` (`load`, `save`, `clear` take `ch`, `topic`, `graph_id`), the three Tauri commands in `lib.rs`, `channel-graph-layout.svelte.ts`, and `GraphPanel.svelte`. Add migration v6 that rebuilds the table: create `channel_node_positions_new` with the new key, copy existing rows with `ch` and `topic` set to an empty string (the old rows carry neither), drop the old table, rename. Update `verification.rs` for the new user version and table shape.
 2. Uniqueness in `validate.ts`. Add `uniqueBy(items, key, path)` and reject, with a path and a message, a diff file `path`, a document `path`, a comment `id`, a form option `value` within one field, and a graph action `id` within one list (graph-level and per node). For graphs, a duplicate action id is dropped with a notice, like other graph over-limit cases, because rejecting a whole graph for a button is harsh. Reviews and forms reject, as today.
 3. Audit every other `{#each ... (key)}` in `src/lib/components/channels` against the list above, and make the debug panel keys safe too.
-4. Docs: add "paths and ids must be unique within a request" to `docs/guide/channels.md` sections 4 to 6.
-
+4. Docs: add "paths and ids must be unique within a request" to `docs/guide/channels.md` sections 4 to 6, and update its markdown section to say the output is sanitized with DOMPurify and list the allowed elements and link schemes.
 5. Markdown sanitizing. Replace the hand-written sanitizer in `src/lib/channels/markdown.ts` with DOMPurify, run over the HTML that `marked` produces. Add `dompurify` as a dependency. Configure it with a strict allowlist: no scripts, styles, forms, images or iframes, links limited to `http`, `https` and `mailto` with `rel="noopener noreferrer"` and `target="_blank"` forced by a hook, and no `data-` or `on*` attributes. Images become their alt text through a `marked` renderer override, as now. Keep `safeHref`. `renderMarkdownBlocks` sanitizes each block separately, and the result is the only value passed to `{@html}` (`Markdown.svelte` is the single site). Keep every existing case in `markdown.test.ts` as a regression suite, and add known bypass strings (nested `<svg>` and `<math>` content, `javascript:` and `data:` links, mutation-XSS patterns, HTML inside a table cell or a code fence). DOMPurify needs a DOM, and vitest runs in plain Node with no DOM today. Add `happy-dom` as a dev dependency and select it for the markdown tests only, with a `// @vitest-environment happy-dom` comment in that file, so the other tests stay in Node. The sanitizer module creates its DOMPurify instance lazily, so importing `markdown.ts` outside a DOM (the store and integration tests do) does not fail.
 
 Tests: `validate.test.ts` cases for each duplicate; `channel-graph-layout` cases showing two topics with the same graph id keep separate positions; a Rust test with two channels saving to the same graph id; the markdown regression and bypass suite.
@@ -142,7 +141,7 @@ Goal: a request waits for the user for as long as it takes, and the user does no
 Tasks:
 0. Remove request expiry. The shim no longer times requests out and no longer writes the `pipan:x:<requestId>` widget; `timeoutMs` is dropped from the producer request options. The host removes the expiry handling for that widget in `channels.svelte.ts` and `codec.ts`. A request now ends by an answer, Cancel or Esc, a session change, or the process exiting. Remove `/demo-timeout` from the reference producer, the harness and the integration test, and update spec sections 3 and 8, the guide, the authoring guide and the producer README. Keep a producer-side rule in the guide: a producer that cannot wait forever must race its own timer against the request and decide what to do, since PiPan will not cancel it.
 
-1. Guard. When the user starts a session switch, new chat, or stop while the pending queue is non-empty, show a confirm ("1 request is waiting. Switching cancels it.") with Switch and Stay. The existing cancel behavior stays for the confirmed case.
+1. Guard. When the user starts a session switch, a new chat, or Stop Process (not Stop generation, which does not touch requests) while the pending queue is non-empty, show a confirm ("1 request is waiting. Switching cancels it.") with Switch and Stay. The existing cancel behavior stays for the confirmed case.
 2. Because the request modal is blocking, the guard only matters for a switch started by code (a keyboard shortcut or an extension intent). Check which entry points can run while a modal is open, and cover those.
 3. Update section 6 of the first plan and spec section 8 to say the unviewed-session badge is not needed because only the viewed session can have a pending request.
 
@@ -204,12 +203,12 @@ Carried over from the first plan:
 
 | Layer | Tool |
 |---|---|
-| Key and validator changes | vitest, `cargo test` |
+| Key, validator and sanitizer changes | vitest (happy-dom for markdown), `cargo test` |
 | Form validation with `requiredFor` | vitest, the harness |
 | Graph auto-open and attention | vitest for the store logic, manual run for the panel and tab dot |
 | Custom messages and notifications | vitest for history and live paths, manual run |
 | Dialog bridge | vitest, a harness scenario without the shim, manual run |
-| Switch guard | vitest, manual run |
+| Request lifecycle and switch guard | vitest with a fake clock, the harness, manual run |
 | Schema | schema validation test against the reference producer |
 | Final | `pnpm check`, `pnpm test`, `pnpm test:channel`, `cargo test`, `cargo clippy`, `cargo fmt --check`, `pnpm docs:build` |
 
