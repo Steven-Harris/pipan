@@ -1,0 +1,12 @@
+{
+  "id": "acme.demo",
+  "name": "Acme Demo",
+  "version": "1.0.0",
+  "description": "Companion plugin for the channel reference producer.",
+  "author": "Acme",
+  "entry": "index.js",
+  "contributes": {
+    "panels": [{ "id": "demo-status", "title": "Demo status", "icon": "puzzle", "defaultPosition": "split" }],
+    "channels": [{ "topic": "graph", "primitive": "graph", "title": "Demo run", "icon": "network" }]
+  }
+}

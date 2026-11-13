@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { channelPlugins, type ChannelMessageRenderer } from '#lib/channels/plugin-api.svelte.ts';
 import { CHANNELS_EXTENSION_ID, graphPanelId, parseGraphPanelId } from '#lib/channels/panels.ts';
 import { channels } from '#lib/stores/channels.svelte.ts';
 import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
@@ -101,9 +102,30 @@ class ExtensionRegistry {
         });
       }
     }
-    // One panel per published graph topic. Offered in the picker, never opened automatically.
+    // Graph topics that plugins declare in their manifest, always offered in the picker.
+    const seen = new Set<string>();
+    for (const ext of this.enabledExtensions) {
+      for (const c of ext.manifest.contributes.channels ?? []) {
+        if (c.primitive !== 'graph') continue;
+        const id = graphPanelId(ext.manifest.id, c.topic);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        panels.push({
+          id,
+          title: c.title,
+          icon: c.icon ?? 'network',
+          defaultPosition: c.defaultPosition ?? 'split',
+          extensionId: ext.manifest.id,
+          extensionName: ext.manifest.name,
+          builtin: ext.builtin,
+          label: c.title,
+          description: `${c.title} (${ext.manifest.name})`,
+          iconComponent: resolveExtensionIcon(c.icon ?? 'network')
+        });
+      }
+    }
+    // One panel per other published graph topic. Offered in the picker, never opened automatically.
     if (this.enabledExtensions.some((ext) => ext.manifest.id === CHANNELS_EXTENSION_ID)) {
-      const seen = new Set<string>();
       for (const state of Object.values(channels.states)) {
         if (state.primitive !== 'graph') continue;
         const id = graphPanelId(state.ch, state.topic);
@@ -243,6 +265,12 @@ class ExtensionRegistry {
     return this.contributedStatusBarItems.some((i) => i.id === itemId);
   }
 
+  /** The renderer an enabled plugin registered for log messages of its own channel. */
+  getMessageRenderer(ch: string, name: string): ChannelMessageRenderer | undefined {
+    if (!this.isExtensionEnabled(ch)) return undefined;
+    return this.runtimeRegistrations[this.resolveId(ch)]?.messageRenderers?.[name];
+  }
+
   getRuntimeStatusBarItemState(
     extensionId: string,
     itemId: string
@@ -278,6 +306,7 @@ class ExtensionRegistry {
       closePanel: (panelId: string) => {
         workspaceStore.closePanel(panelId);
       },
+      channel: (extensionId: string) => channelPlugins.channel(extensionId),
       openMainView: (viewId: string) => {
         if (viewId === 'chat' || viewId === 'extensions' || this.isMainViewEnabled(viewId)) {
           workspaceStore.openMainView(viewId);

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
+import { channelPlugins } from '#lib/channels/plugin-api.svelte.ts';
 import { channels } from '#lib/stores/channels.svelte.ts';
 import type {
   ChatMessage,
@@ -231,6 +232,7 @@ class ChatStore {
     this.initialized = true;
 
     channels.configure({ send: (command) => invoke('send_pi_command', { command }) });
+    channelPlugins.configure({ activeSession: () => this.activeSessionId ?? '' });
 
     const unlistenEvent = await listen<PiRpcEvent>('pi:event', (event) => {
       // Extension channel traffic (shim announce, state, requests) is handled by its own store.

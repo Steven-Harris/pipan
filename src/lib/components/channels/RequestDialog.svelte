@@ -4,15 +4,24 @@
   import { onMount } from 'svelte';
   import type { FormAnswer, FormRequest, ReviewAnswer, ReviewRequest } from '#lib/channels/types.ts';
   import { channels, type PendingRequest } from '#lib/stores/channels.svelte.ts';
+  import { channelPlugins } from '#lib/channels/plugin-api.svelte.ts';
+  import CustomRequestView from './CustomRequestView.svelte';
   import FormView from './FormView.svelte';
   import ReviewView from './review/ReviewView.svelte';
 
   let { request, waiting }: { request: PendingRequest; waiting: number } = $props();
 
   let dialog: HTMLDialogElement;
-  const form = $derived(request.kind === 'form' ? (request.payload as FormRequest) : null);
-  const review = $derived(request.kind === 'review' ? (request.payload as ReviewRequest) : null);
-  const title = $derived(form?.title ?? review?.title ?? 'Unsupported request');
+  // A plugin's renderer for this channel and kind replaces the built-in view.
+  const custom = $derived(channelPlugins.requestHandler(request.ch, request.kind));
+  const form = $derived(!custom && request.kind === 'form' ? (request.payload as FormRequest) : null);
+  const review = $derived(!custom && request.kind === 'review' ? (request.payload as ReviewRequest) : null);
+  const payloadTitle = $derived(
+    typeof (request.payload as { title?: unknown } | null)?.title === 'string'
+      ? (request.payload as { title: string }).title
+      : request.kind
+  );
+  const title = $derived(form?.title ?? review?.title ?? (custom ? payloadTitle : 'Unsupported request'));
   let unsent = $state(0);
   let confirmDiscard = $state(false);
   const titleId = $derived(`request-title-${request.requestId}`);
@@ -86,6 +95,8 @@
 
   {#if form}
     <FormView {form} onanswer={answer} />
+  {:else if custom}
+    <CustomRequestView {request} handler={custom} />
   {:else if review}
     <ReviewView {review} onanswer={answer} bind:unsent />
   {:else}

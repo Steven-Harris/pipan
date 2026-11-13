@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => []) }));
 
@@ -48,5 +48,66 @@ describe('channel graph panels', () => {
 
   it('falls back to the topic as the label before a title is published', () => {
     expect(getPanelDefinition(graphPanelId('acme.demo', 'graph')).label).toBe('graph');
+  });
+});
+
+describe('plugin channel contributions', () => {
+  const plugin = (enabled = true) => ({
+    manifest: {
+      id: 'acme.demo',
+      name: 'Demo plugin',
+      version: '1.0.0',
+      description: '',
+      author: 'Acme',
+      contributes: {
+        channels: [{ topic: 'graph', primitive: 'graph' as const, title: 'Demo run', icon: 'network', defaultPosition: 'bottom' as const }]
+      }
+    },
+    builtin: false,
+    installed: true,
+    enabled,
+    aliases: []
+  });
+  const original = extensionRegistry.extensions;
+
+  beforeEach(() => {
+    channels.processExited();
+    extensionRegistry.extensions = [...original, plugin()];
+  });
+  afterEach(() => {
+    extensionRegistry.extensions = original;
+    extensionRegistry.runtimeRegistrations = {};
+  });
+
+  it('lists a declared graph panel with the manifest title before anything is published', () => {
+    const panel = extensionRegistry.contributedPanelsById[graphPanelId('acme.demo', 'graph')];
+    expect(panel).toMatchObject({ label: 'Demo run', defaultPosition: 'bottom', extensionId: 'acme.demo' });
+    expect(getPanelDefinition(panel.id).label).toBe('Demo run');
+  });
+
+  it('keeps the declared title once the producer publishes its own', () => {
+    channels.handleEvent(
+      S,
+      widget('pipan:shim', [JSON.stringify({ protocol: 1, host: 'pipan', primitives: { graph: 1 } })])
+    );
+    publish('graph', 'graph', { id: 'g', title: 'Run 7', nodes: [{ id: 'a', label: 'A', status: 'done' }], edges: [] });
+    const matching = extensionRegistry.contributedPanels.filter((p) => p.id === graphPanelId('acme.demo', 'graph'));
+    expect(matching).toHaveLength(1);
+    expect(matching[0].label).toBe('Demo run');
+  });
+
+  it('hides the panel when the plugin is disabled', () => {
+    extensionRegistry.extensions = [...original, plugin(false)];
+    expect(extensionRegistry.contributedPanelsById[graphPanelId('acme.demo', 'graph')]).toBeUndefined();
+  });
+
+  it('finds message renderers only for an enabled plugin and its own channel', () => {
+    const render = vi.fn();
+    extensionRegistry.registerRuntimeExtension({ id: 'acme.demo', messageRenderers: { note: render } });
+    expect(extensionRegistry.getMessageRenderer('acme.demo', 'note')).toBe(render);
+    expect(extensionRegistry.getMessageRenderer('acme.demo', 'other')).toBeUndefined();
+    expect(extensionRegistry.getMessageRenderer('someone.else', 'note')).toBeUndefined();
+    extensionRegistry.extensions = [...original, plugin(false)];
+    expect(extensionRegistry.getMessageRenderer('acme.demo', 'note')).toBeUndefined();
   });
 });

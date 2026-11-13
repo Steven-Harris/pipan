@@ -2,10 +2,23 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { Terminal, FolderOpen, ArrowDown, Sparkles, MessageSquareCode } from 'lucide-svelte';
   import { chatStore } from '#lib/stores/chat.svelte.ts';
+  import { mergeTranscript } from '#lib/channels/transcript.ts';
+  import { extensionRegistry } from '#lib/extensions/registry.svelte.ts';
+  import { channels } from '#lib/stores/channels.svelte.ts';
+  import CustomMessageItem from './channels/CustomMessageItem.svelte';
   import MessageItem from './MessageItem.svelte';
 
   let viewport = $state<HTMLDivElement | null>(null);
   let userScrolledUp = $state(false);
+
+  // Plugin-rendered channel messages join the transcript by time.
+  const transcript = $derived(
+    mergeTranscript(
+      chatStore.messages,
+      channels.log[chatStore.activeSessionId ?? ''] ?? [],
+      (ch, name) => extensionRegistry.getMessageRenderer(ch, name) !== undefined
+    )
+  );
 
   function handleScroll() {
     if (!viewport) return;
@@ -140,8 +153,12 @@
     {:else}
       <!-- Active Conversation Transcript -->
       <div class="mx-auto max-w-4xl space-y-1 pb-4">
-        {#each chatStore.messages as message (message.id)}
-          <MessageItem {message} />
+        {#each transcript as entry (entry.key)}
+          {#if entry.type === 'chat'}
+            <MessageItem message={entry.message} />
+          {:else}
+            <CustomMessageItem item={entry.item} />
+          {/if}
         {/each}
       </div>
     {/if}

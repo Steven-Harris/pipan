@@ -74,6 +74,22 @@ window.pipan.registerExtension({
 
 4. Open PiPan. The new panel appears in your auxiliary panel list.
 
+### Channel API
+
+A plugin whose id equals a Pi extension's [channel](./channels) id can build custom UI for it. `window.pipan.channel(id)` returns:
+
+| Method | Purpose |
+| :--- | :--- |
+| `subscribe(topic, callback)` | Calls `callback` with the latest state of a topic for the viewed session, then on every change. `null` means nothing is published. Returns an unsubscribe function. |
+| `onRequest(kind, handler)` | Renders requests of that kind from the channel. `handler(container, request)` draws into `container` and finishes with `request.answer(payload)` or `request.cancel()`. Returns an unsubscribe function. |
+| `intent(name, payload)` | Sends an intent to the producer. Resolves `false` when no producer can receive it. |
+
+`registerExtension` also accepts `messageRenderers`, a map from a log message name to `(message, container) => cleanup`. It draws the producer's `as: "message"` log entries in the chat transcript. Messages without a renderer stay hidden.
+
+Channel ids are self-declared, so any plugin can read any channel. Plugins run with the same trust as the rest of the webview.
+
+[`examples/channel-plugin`](https://github.com/Steven-Harris/pipan/tree/main/examples/channel-plugin) shows all three. [Writing a channel producer](./channels-authoring) covers the Pi side.
+
 ### Installing and Managing Plugins
 
 - **From Local Directory**: Click **Install from Folder** in the Extensions tab and select the extension folder.
@@ -148,6 +164,15 @@ export interface PiPanExtensionManifest {
       name: string;
       description: string;
     }>;
+
+    /** Topics of the plugin's own channel that PiPan renders with a built-in primitive */
+    channels?: Array<{
+      topic: string;
+      primitive: 'graph';
+      title: string;
+      icon?: string;
+      defaultPosition?: 'split' | 'bottom';
+    }>;
   };
 }
 ```
@@ -165,3 +190,7 @@ export interface PiPanExtensionManifest {
 | `builtin` | boolean | No | Identifies internal PiPan components |
 | `enabledByDefault` | boolean | No | Default enablement state |
 | `contributes` | object | Yes | Contribution points registered by the plugin |
+
+### Channel contributions
+
+`contributes.channels` fixes the title, icon and placement of a graph panel for a topic of the plugin's own channel (the channel id is the plugin id). The panel is listed in the panel picker before the producer publishes anything. `primitive` must be `graph`.
