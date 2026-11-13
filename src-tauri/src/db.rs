@@ -314,6 +314,18 @@ impl Database {
         graph_id: &str,
         positions: &HashMap<String, NodePosition>,
     ) -> Result<(), String> {
+        const MAX_POSITIONS: usize = 2000;
+        const MAX_KEY_LEN: usize = 512;
+        if positions.len() > MAX_POSITIONS {
+            return Err(format!("Too many node positions (max {MAX_POSITIONS})"));
+        }
+        if [ch, topic, graph_id]
+            .iter()
+            .any(|k| k.len() > MAX_KEY_LEN)
+            || positions.keys().any(|k| k.len() > MAX_KEY_LEN)
+        {
+            return Err("Channel graph key too long".to_string());
+        }
         let mut conn = self.lock();
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute(
