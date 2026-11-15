@@ -1,5 +1,5 @@
 /**
- * Extension channel types. Canonical source for docs/plans/extension-channel-spec.md.
+ * Extension channel types. Canonical source for docs/guide/channels.md.
  * Wire-level types are in sections 2 and 3, primitives in sections 4 to 6.
  */
 

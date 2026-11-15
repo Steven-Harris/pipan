@@ -1,6 +1,6 @@
 /**
  * Pure encode and decode of the extension channel wire format
- * (docs/plans/extension-channel-spec.md section 3). No store, no I/O.
+ * (docs/guide/channels.md section 3). No store, no I/O.
  */
 
 import { MAX_PAYLOAD_BYTES } from './limits';

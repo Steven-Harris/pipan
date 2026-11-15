@@ -3,7 +3,7 @@
  *
  * Loaded into the primary Pi session with `pi --extension <this file>`. Other Pi extensions
  * talk to it over the shared in-process event bus (`pi.events`); the shim encodes that traffic
- * onto the Pi RPC carriers PiPan can see. Wire format: docs/plans/extension-channel-spec.md,
+ * onto the Pi RPC carriers PiPan can see. Wire format: docs/guide/channels.md,
  * sections 2 and 3.
  *
  *   state   : setWidget("pipan:s:<ch>:<topic>", <envelope JSON in 64 KiB pieces>)

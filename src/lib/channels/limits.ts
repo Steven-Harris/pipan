@@ -1,4 +1,4 @@
-/** Host-enforced limits from docs/plans/extension-channel-spec.md section 3, plus store bounds. */
+/** Host-enforced limits from docs/guide/channels.md section 3, plus store bounds. */
 
 export const MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 export const MAX_GRAPH_NODES = 500;

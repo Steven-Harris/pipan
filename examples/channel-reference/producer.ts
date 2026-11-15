@@ -4,7 +4,7 @@
  * A standalone Pi extension that uses only `pi.events`, so it has no dependency on PiPan. When
  * PiPan's shim is loaded it publishes graphs, asks questions and writes log entries; without a
  * shim every call is a no-op and the producer falls back to plain Pi dialogs. All data is
- * synthetic. Wire format: docs/plans/extension-channel-spec.md.
+ * synthetic. Wire format: docs/guide/channels.md.
  *
  * Commands: /demo-hello, /demo-graph [clear], /demo-state-big <bytes>, /demo-form [pick|checklist|edit|answer|body],
  * /demo-review-diff [large], /demo-review-doc [multi], /demo-unknown, /demo-log [entry|message], /demo-say, /demo-notify [info|warning|error], /demo-dialog [select|confirm|input|editor].

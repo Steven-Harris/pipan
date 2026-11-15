@@ -1,7 +1,7 @@
 //! Extension channel shim loader.
 //!
 //! PiPan ships `resources/pipan-channel-shim.ts`, a Pi extension that carries the extension
-//! channel over Pi's RPC (see `docs/plans/extension-channel-spec.md`). Rust only has to write the
+//! channel over Pi's RPC (see `docs/guide/channels.md`). Rust only has to write the
 //! file and pass `--extension <path>` to the primary Pi session; all decoding happens in the
 //! webview.
 
