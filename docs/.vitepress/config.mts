@@ -4,8 +4,6 @@ export default defineConfig({
   title: 'PiPan Documentation',
   description: 'Desktop GUI and orchestration workspace for the pi AI coding agent',
   base: process.env.BASE_PATH || '/pipan/',
-  // Working plans are not part of the published site.
-  srcExclude: ['plans/**'],
   themeConfig: {
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },

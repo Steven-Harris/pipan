@@ -27,6 +27,7 @@ Instead of running `pi` in a plain terminal, PiPan communicates with `pi` using 
 - **Embedded Terminal & File Explorer:** Open a native pseudo-terminal or browse project files directly inside the workspace.
 - **Cost & Usage Analytics:** Scans session transcripts to track token counts and estimated costs across days, weeks, months, and years. Displays telemetry in the bottom status bar.
 - **In-App Doctor:** Scans your system for `pi`, `gh`, `git`, Node.js, and compiler toolchains. Provides fix commands for missing tools or auth errors.
+- **Extension Channels:** Pi extensions can drive native graph panels, diff and document reviews, and forms with no frontend code.
 - **Extension System:** Load custom workspace extensions that contribute panels, custom views, status bar items, and slash commands.
 
 ---
