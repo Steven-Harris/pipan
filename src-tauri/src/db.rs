@@ -319,9 +319,7 @@ impl Database {
         if positions.len() > MAX_POSITIONS {
             return Err(format!("Too many node positions (max {MAX_POSITIONS})"));
         }
-        if [ch, topic, graph_id]
-            .iter()
-            .any(|k| k.len() > MAX_KEY_LEN)
+        if [ch, topic, graph_id].iter().any(|k| k.len() > MAX_KEY_LEN)
             || positions.keys().any(|k| k.len() > MAX_KEY_LEN)
         {
             return Err("Channel graph key too long".to_string());
