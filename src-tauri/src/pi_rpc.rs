@@ -748,20 +748,17 @@ pub(crate) fn find_executable_in_path(binary_name: &str, path_var: &OsString) ->
 }
 
 fn is_executable_file(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = std::fs::metadata(path) {
-            return meta.permissions().mode() & 0o111 != 0;
-        }
-        false
+        path.is_file()
+            && std::fs::metadata(path)
+                .map(|meta| meta.permissions().mode() & 0o111 != 0)
+                .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
-        true
+        path.is_file()
     }
 }
 

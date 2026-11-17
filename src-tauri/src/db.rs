@@ -819,7 +819,6 @@ mod tests {
         let load = |ch: &str, topic: &str| {
             db.load_channel_node_positions("s1", ch, topic, "run")
                 .unwrap()["n"]
-                .clone()
         };
         assert_eq!(load("acme.one", "graph"), pos(1.0, 1.0));
         assert_eq!(load("acme.one", "graph.1"), pos(2.0, 2.0));
