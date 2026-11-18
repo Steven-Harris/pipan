@@ -1,4 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
+import { channelPlugins, type ChannelMessageRenderer } from '#lib/channels/plugin-api.svelte.ts';
+import { CHANNELS_EXTENSION_ID, graphPanelId, parseGraphPanelId } from '#lib/channels/panels.ts';
+import { channels } from '#lib/stores/channels.svelte.ts';
 import { workspaceStore } from '#lib/stores/workspace.svelte.ts';
 import type { PiSkillItem } from '#lib/types/pi.ts';
 import {
@@ -96,6 +99,50 @@ class ExtensionRegistry {
           label: p.title,
           description: p.description ?? `${p.title} (${ext.manifest.name})`,
           iconComponent: resolveExtensionIcon(p.icon)
+        });
+      }
+    }
+    // Graph topics that plugins declare in their manifest, always offered in the picker.
+    const seen = new Set<string>();
+    for (const ext of this.enabledExtensions) {
+      for (const c of ext.manifest.contributes.channels ?? []) {
+        if (c.primitive !== 'graph') continue;
+        const id = graphPanelId(ext.manifest.id, c.topic);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        panels.push({
+          id,
+          title: c.title,
+          icon: c.icon ?? 'network',
+          defaultPosition: c.defaultPosition ?? 'split',
+          extensionId: ext.manifest.id,
+          extensionName: ext.manifest.name,
+          builtin: ext.builtin,
+          label: c.title,
+          description: `${c.title} (${ext.manifest.name})`,
+          iconComponent: resolveExtensionIcon(c.icon ?? 'network')
+        });
+      }
+    }
+    // One panel per other published graph topic. Offered in the picker, never opened automatically.
+    if (this.enabledExtensions.some((ext) => ext.manifest.id === CHANNELS_EXTENSION_ID)) {
+      for (const state of Object.values(channels.states)) {
+        if (state.primitive !== 'graph') continue;
+        const id = graphPanelId(state.ch, state.topic);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const title = (state.data as { title?: string }).title ?? state.topic;
+        panels.push({
+          id,
+          title,
+          icon: 'network',
+          defaultPosition: 'split',
+          extensionId: CHANNELS_EXTENSION_ID,
+          extensionName: 'Extension Channels',
+          builtin: true,
+          label: title,
+          description: `Graph from ${state.ch}`,
+          iconComponent: resolveExtensionIcon('network')
         });
       }
     }
@@ -202,6 +249,7 @@ class ExtensionRegistry {
   }
 
   isPanelEnabled(panelId: string): boolean {
+    if (parseGraphPanelId(panelId)) return this.isExtensionEnabled(CHANNELS_EXTENSION_ID);
     return Boolean(this.contributedPanelsById[panelId]);
   }
 
@@ -215,6 +263,12 @@ class ExtensionRegistry {
 
   isStatusBarItemEnabled(itemId: string): boolean {
     return this.contributedStatusBarItems.some((i) => i.id === itemId);
+  }
+
+  /** The renderer an enabled plugin registered for log messages of its own channel. */
+  getMessageRenderer(ch: string, name: string): ChannelMessageRenderer | undefined {
+    if (!this.isExtensionEnabled(ch)) return undefined;
+    return this.runtimeRegistrations[this.resolveId(ch)]?.messageRenderers?.[name];
   }
 
   getRuntimeStatusBarItemState(
@@ -252,6 +306,7 @@ class ExtensionRegistry {
       closePanel: (panelId: string) => {
         workspaceStore.closePanel(panelId);
       },
+      channel: (extensionId: string) => channelPlugins.channel(extensionId),
       openMainView: (viewId: string) => {
         if (viewId === 'chat' || viewId === 'extensions' || this.isMainViewEnabled(viewId)) {
           workspaceStore.openMainView(viewId);

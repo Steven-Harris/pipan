@@ -44,7 +44,15 @@ export default defineConfig({
         text: 'Extensions',
         items: [
           { text: 'Plugin Guide', link: '/guide/extensions#plugin-guide' },
+          { text: 'Channel API', link: '/guide/extensions#channel-api' },
           { text: 'Manifest Schema', link: '/guide/extensions#manifest-schema' }
+        ]
+      },
+      {
+        text: 'Channels',
+        items: [
+          { text: 'Reference', link: '/guide/channels' },
+          { text: 'Writing a Producer', link: '/guide/channels-authoring' }
         ]
       }
     ],

@@ -48,6 +48,19 @@ pub struct ExtensionPanelContribution {
     pub default_position: Option<String>,
 }
 
+/// A topic of the plugin's own channel that the host renders with a built-in primitive.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionChannelContribution {
+    pub topic: String,
+    pub primitive: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_position: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionViewContribution {
@@ -85,6 +98,8 @@ pub struct ExtensionContributes {
     pub status_bar_items: Option<Vec<ExtensionStatusBarContribution>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slash_commands: Option<Vec<ExtensionSlashCommandContribution>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channels: Option<Vec<ExtensionChannelContribution>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -297,6 +312,35 @@ pub fn validate_manifest(manifest: &mut PiPanExtensionManifest) -> Result<(), St
                 return Err(format!(
                     "Extension `{}` slashCommand contribution requires non-empty name",
                     manifest.id
+                ));
+            }
+        }
+    }
+
+    if let Some(channels) = &mut manifest.contributes.channels {
+        for channel in channels {
+            channel.topic = channel.topic.trim().to_string();
+            channel.primitive = channel.primitive.trim().to_string();
+            channel.title = channel.title.trim().to_string();
+            if channel.topic.is_empty() || channel.title.is_empty() {
+                return Err(format!(
+                    "Extension `{}` channel contribution requires non-empty topic and title",
+                    manifest.id
+                ));
+            }
+            if channel.primitive != "graph" {
+                return Err(format!(
+                    "Extension `{}` channel `{}` has unsupported primitive `{}` (expected 'graph')",
+                    manifest.id, channel.topic, channel.primitive
+                ));
+            }
+            if let Some(pos) = &channel.default_position
+                && pos != "split"
+                && pos != "bottom"
+            {
+                return Err(format!(
+                    "Extension `{}` channel `{}` has invalid defaultPosition `{pos}` (expected 'split' or 'bottom')",
+                    manifest.id, channel.topic
                 ));
             }
         }
@@ -925,5 +969,34 @@ mod tests {
         assert!(err.contains("reserved"));
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_manifest_channel_contributions_are_kept_and_validated() {
+        let manifest = parse_and_validate_manifest(
+            r#"{
+                "id": "acme.demo", "name": "Demo", "version": "1.0.0",
+                "contributes": { "channels": [
+                    { "topic": " graph ", "primitive": "graph", "title": " Demo run ", "icon": "network", "defaultPosition": "bottom" }
+                ] }
+            }"#,
+        )
+        .expect("valid manifest");
+        let channels = manifest.contributes.channels.expect("channels kept");
+        assert_eq!(channels[0].topic, "graph");
+        assert_eq!(channels[0].title, "Demo run");
+        assert_eq!(channels[0].default_position.as_deref(), Some("bottom"));
+
+        let unsupported = r#"{ "id": "acme.demo", "name": "D", "version": "1", "contributes": { "channels": [
+            { "topic": "t", "primitive": "review", "title": "T" } ] } }"#;
+        assert!(
+            parse_and_validate_manifest(unsupported)
+                .unwrap_err()
+                .contains("unsupported primitive")
+        );
+
+        let untitled = r#"{ "id": "acme.demo", "name": "D", "version": "1", "contributes": { "channels": [
+            { "topic": "t", "primitive": "graph", "title": " " } ] } }"#;
+        assert!(parse_and_validate_manifest(untitled).is_err());
     }
 }

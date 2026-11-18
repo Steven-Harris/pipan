@@ -19,13 +19,13 @@ use crate::usage::UsageLedgerRecord;
 fn e2e_sqlite_session_and_node_graph_lifecycle() {
     let db = Database::open_in_memory().expect("open in-memory database");
 
-    // Verify v1..v4 schema readiness (`PRAGMA user_version == 4`).
+    // Verify v1..v6 schema readiness (`PRAGMA user_version == 6`).
     {
         let conn = db.lock();
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("query user_version");
-        assert_eq!(version, 4, "expected schema user_version 4");
+        assert_eq!(version, 6, "expected schema user_version 6");
     }
 
     // Create two sessions with metadata, groups, tags, and cost metrics.

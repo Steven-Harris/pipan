@@ -38,6 +38,18 @@ The Directed Acyclic Graph (DAG) canvas displays agent activity as an interactiv
 - **Per-Session Coordinates**: Move any node with your mouse. PiPan saves your custom positions in SQLite.
 - **Reset Layout**: Click to re-run auto-layout and snap nodes back into standard order.
 
+## Extension Channels {#extension-channels}
+
+Pi extensions can drive native PiPan UI without any frontend code. An extension publishes data or asks a question, PiPan renders it, and the answer goes back to the extension.
+
+- **Graph panels**: A live graph of steps with status, per-node detail, and action buttons. The panel opens by itself the first time an extension publishes a graph (at most 4 per session), and dragged node positions are saved.
+- **Reviews**: A diff or a set of documents with line and range comments, edit and reopen of earlier comments, and a choice such as Approve or Request changes.
+- **Forms**: Pick-one, checklist, free text, and edit-with-prefill questions in a modal.
+- **Pi dialogs**: `select`, `confirm`, `input` and `editor` calls from any Pi extension appear in the same modal, with no setup.
+- **Chat messages and toasts**: `pi.sendMessage` messages with `display: true` appear as cards in the chat, and `notify` calls appear as toasts.
+
+Every request shows which channel asked. See the [Channels reference](./channels) and [Writing a channel producer](./channels-authoring).
+
 ## GitHub Integration {#github-integration}
 
 PiPan connects directly to GitHub through the native `gh` CLI. It does not need background polling loops or heavy MCP servers.

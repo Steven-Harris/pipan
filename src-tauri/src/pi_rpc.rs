@@ -322,6 +322,13 @@ impl PiRpcManager {
             extra_args.push(OsString::from(thinking_arg));
         }
 
+        // Extension channel: load the shim so other Pi extensions can drive PiPan UI. A failure
+        // to write it only disables the channel.
+        match crate::channel::ensure_channel_shim(app_handle) {
+            Ok(shim_path) => extra_args.extend(crate::channel::channel_shim_args(&shim_path)),
+            Err(e) => eprintln!("PiPan: extension channel disabled: {e}"),
+        }
+
         let cli_args = build_pi_session_args(
             session_file_path_buf.as_deref(),
             Some(session_name.as_str()),
@@ -741,20 +748,17 @@ pub(crate) fn find_executable_in_path(binary_name: &str, path_var: &OsString) ->
 }
 
 fn is_executable_file(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = std::fs::metadata(path) {
-            return meta.permissions().mode() & 0o111 != 0;
-        }
-        false
+        path.is_file()
+            && std::fs::metadata(path)
+                .map(|meta| meta.permissions().mode() & 0o111 != 0)
+                .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
-        true
+        path.is_file()
     }
 }
 

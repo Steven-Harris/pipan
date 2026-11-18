@@ -85,3 +85,38 @@
   overflow: hidden;
 }
 
+
+/*
+ * Plugin content (custom panels, request views and chat messages) is plain DOM that a plugin
+ * draws itself. Tailwind's reset leaves native controls looking like text, so give them a
+ * baseline. It sits in the components layer, so a plugin's own styles win.
+ */
+@layer components {
+  .plugin-surface button {
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #e4e4e7;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .plugin-surface button:hover:not(:disabled) {
+    background: #3f3f46;
+  }
+
+  .plugin-surface button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .plugin-surface :is(input, textarea, select) {
+    border: 1px solid #3f3f46;
+    background: #18181b;
+    color: #e4e4e7;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    font: inherit;
+  }
+}

@@ -1,4 +1,5 @@
 import type { Network } from 'lucide-svelte';
+import type { ChannelApi, ChannelMessageRenderer } from '#lib/channels/plugin-api.svelte.ts';
 
 export type ExtensionIconComponent = typeof Network;
 export type ExtensionPanelDefaultPosition = 'split' | 'bottom';
@@ -35,12 +36,26 @@ export interface ExtensionSlashCommandContribution {
   description: string;
 }
 
+/**
+ * A topic of the plugin's own channel (the channel id is the plugin id) that PiPan renders with a
+ * built-in primitive. Declaring it gives the panel a fixed title, icon and placement, and lists
+ * it in the panel picker before the producer has published anything.
+ */
+export interface ExtensionChannelContribution {
+  topic: string;
+  primitive: 'graph';
+  title: string;
+  icon?: string;
+  defaultPosition?: ExtensionPanelDefaultPosition;
+}
+
 export interface PiPanExtensionContributes {
   panels?: ExtensionPanelContribution[];
   sidebarTabs?: ExtensionSidebarTabContribution[];
   mainViews?: ExtensionMainViewContribution[];
   statusBarItems?: ExtensionStatusBarItemContribution[];
   slashCommands?: ExtensionSlashCommandContribution[];
+  channels?: ExtensionChannelContribution[];
 }
 
 export interface PiPanExtensionManifest {
@@ -124,6 +139,11 @@ export interface PiPanRuntimeExtensionRegistration {
   mainViews?: Record<string, PiPanContributionRenderFn | { html?: string; text?: string }>;
   statusBarItems?: Record<string, PiPanRuntimeStatusBarItemState>;
   slashCommands?: Record<string, (args: string) => void | Promise<void> | string | Promise<string>>;
+  /**
+   * Renders log messages the plugin's producer wrote with `as: "message"`, in the chat transcript.
+   * The key is the log `name`. Messages without a renderer stay hidden.
+   */
+  messageRenderers?: Record<string, ChannelMessageRenderer>;
   activate?: () => void | (() => void);
   deactivate?: () => void;
 }
@@ -146,6 +166,8 @@ export interface PiPanHostGlobalApi {
   openPanel: (panelId: string) => void;
   closePanel: (panelId: string) => void;
   openMainView: (viewId: string) => void;
+  /** Channel API for the Pi extension that publishes under `extensionId`. */
+  channel: (extensionId: string) => ChannelApi;
 }
 
 declare global {
